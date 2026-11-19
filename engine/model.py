@@ -1,7 +1,12 @@
 """Constraint Programming (CP-SAT) workforce scheduling engine.
 
-Implements the exact mathematical optimization model specified in the task description
-using Google OR-Tools CP-SAT solver.
+Implements the exact mathematical optimization model specified in the task description:
+- Exclusive daily employee assignment: sum_{q in Q} x_{eqd} <= 1
+- Most-constrained assignment priority: N_{qd} = |{e eligible and available}|
+- Soft weekly-off preferences: v_{ed} in {0, 1}, min sum c_{ed} v_{ed}
+- Hard planned leaves and comp-offs: x_{eqd} <= 1 - U_{ed}
+- Operating calendar rules: 365-day ops, except holidays, no Sun & holidays
+- Categorized validation results: hard-constraint failures, warnings, informational
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ from .domain import (
     SchedulingInput,
     SchedulingResult,
     SolverStatus,
+    ValidationReport,
     WorkloadPolicy,
 )
 from .validator import RosterValidator, get_weekday, is_process_operating
@@ -77,6 +83,20 @@ class SchedulingEngine:
         for ra in input_data.reference_roster:
             self.ref_map.add((ra.employee_id, ra.brand_id, ra.process_id, ra.date))
 
+        # Calculate Most-Constrained variable counts N_qd:
+        # N_qd = |{e : (e, q) is authorized and U_ed == 0}|
+        self.N_qd: Dict[Tuple[str, str, str], int] = {}
+        for brand_id, proc_id, _, _, _ in self.procs:
+            for d in self.dates:
+                count = sum(
+                    1
+                    for e in self.input_data.employees
+                    if (e.id, brand_id, proc_id) in self.alloc_map
+                    and d not in e.leaves
+                    and d not in e.comp_offs
+                )
+                self.N_qd[(brand_id, proc_id, d)] = count
+
     def _validate_inputs(self) -> Tuple[bool, List[str]]:
         """Validate normalized scheduling inputs for internal mathematical consistency."""
         errors: List[str] = []
@@ -87,12 +107,6 @@ class SchedulingEngine:
         if not self.dates:
             errors.append("No scheduling dates provided.")
 
-        for emp in self.input_data.employees:
-            if emp.min_weekly_off < 0:
-                errors.append(f"Employee {emp.id} min_weekly_off cannot be negative.")
-            if emp.max_weekly_off < emp.min_weekly_off:
-                errors.append(f"Employee {emp.id} max_weekly_off ({emp.max_weekly_off}) < min_weekly_off ({emp.min_weekly_off}).")
-
         for b in self.input_data.brands:
             for bp in b.processes:
                 if bp.min_staff < 0:
@@ -101,10 +115,7 @@ class SchedulingEngine:
         return len(errors) == 0, errors
 
     def solve(self, lexicographic: bool = True) -> SchedulingResult:
-        """Solve the workforce scheduling problem using CP-SAT.
-
-        Distinguishes between OPTIMAL, FEASIBLE, INFEASIBLE, UNKNOWN, and MODEL_INVALID.
-        """
+        """Solve the workforce scheduling problem using CP-SAT."""
         start_time = time.perf_counter()
 
         # Step 0: Input consistency validation
@@ -125,28 +136,43 @@ class SchedulingEngine:
         w: Dict[Tuple[str, str], cp_model.IntVar] = {}
         o: Dict[Tuple[str, str], cp_model.IntVar] = {}
         n: Dict[Tuple[str, str], cp_model.IntVar] = {}
+        v: Dict[Tuple[str, str], cp_model.IntVar] = {}  # Weekly off override indicator
 
-        # Delta variables for re-optimization: Delta_eqd = |x_eqd - x0_eqd|
         delta_vars: List[cp_model.IntVar] = []
 
-        # Employee States & Working variables
+        # Decision Variables for Employee States
         for e in self.input_data.employees:
             for d in self.dates:
                 w[(e.id, d)] = model.NewBoolVar(f"w_{e.id}_{d}")
                 o[(e.id, d)] = model.NewBoolVar(f"o_{e.id}_{d}")
                 n[(e.id, d)] = model.NewBoolVar(f"n_{e.id}_{d}")
 
-                # Fixed unavailability indicator u_ed (leave, comp-off)
+                # Hard Constraint 4: Planned Leaves and Comp-Offs (U_ed)
                 u_ed = 1 if (d in e.leaves or d in e.comp_offs) else 0
 
-                # Hard Constraint 1: Employee states partition
-                # w_ed + o_ed + n_ed = 1 - u_ed
+                # Hard Constraint: Employee state partition
+                # w_ed + o_ed + n_ed = 1 - U_ed
                 model.Add(w[(e.id, d)] + o[(e.id, d)] + n[(e.id, d)] == 1 - u_ed)
 
+                # Soft Constraint 3: Weekly-Off Preferences
+                wd = get_weekday(d)
+                is_pref_off = wd in e.weekly_off
+                if is_pref_off and u_ed == 0:
+                    # v_ed = 1 if employee works on preferred off day
+                    v_var = model.NewBoolVar(f"v_{e.id}_{d}")
+                    v[(e.id, d)] = v_var
+                    model.Add(v_var == w[(e.id, d)])
+                else:
+                    v[(e.id, d)] = model.NewConstant(0)
+
         # Process Assignment Variables x[e, q, d]
+        # Sort processes by N_qd (most-constrained first)
+        proc_vars_by_constraint: List[Tuple[int, int, cp_model.IntVar]] = []
+
         for brand_id, proc_id, min_staff, _, _ in self.procs:
             for d in self.dates:
                 is_operating = self.G[(brand_id, proc_id, d)]
+                n_qd_val = self.N_qd[(brand_id, proc_id, d)]
 
                 for e in self.input_data.employees:
                     is_authorized = (e.id, brand_id, proc_id) in self.alloc_map
@@ -155,28 +181,25 @@ class SchedulingEngine:
                         var = model.NewBoolVar(f"x_{e.id}_{brand_id}_{proc_id}_{d}")
                         x[(e.id, brand_id, proc_id, d)] = var
 
-                        # Hard Constraint 4: Employee availability (x_eqd <= 1 - u_ed)
+                        # Hard Constraint 4: Availability constraint
                         u_ed = 1 if (d in e.leaves or d in e.comp_offs) else 0
                         if u_ed == 1:
                             model.Add(var == 0)
 
-                        # Hard Constraint 5: Working-status consistency (x_eqd <= w_ed)
-                        model.Add(var <= w[(e.id, d)])
+                        is_primary = 1 if self.alloc_map.get((e.id, brand_id, proc_id)) == "primary" else 0
+                        proc_vars_by_constraint.append((n_qd_val, -is_primary, var))
 
                         # Re-optimization delta tracking
                         if self.input_data.enable_reoptimization and self.input_data.reference_roster:
                             x0 = 1 if (e.id, brand_id, proc_id, d) in self.ref_map else 0
                             delta = model.NewBoolVar(f"delta_{e.id}_{brand_id}_{proc_id}_{d}")
-                            # Delta_eqd >= x_eqd - x0_eqd and Delta_eqd >= x0_eqd - x_eqd
                             model.Add(delta >= var - x0)
                             model.Add(delta >= x0 - var)
                             delta_vars.append(delta)
-                    else:
-                        # Hard Constraints 2 & 3: Not authorized or not operating -> x_eqd = 0
-                        # (Not created in variable pool ensures x_eqd = 0)
-                        pass
 
-        # Hard Constraint 5 (Lower bound): w_ed <= sum_q x_eqd
+        # Hard Constraint 1: Exclusive Daily Employee Assignment
+        # sum_{q in Q} x_{eqd} <= 1
+        # Working-status consistency: w_{ed} = sum_{q in Q} x_{eqd}
         for e in self.input_data.employees:
             for d in self.dates:
                 emp_x_vars = [
@@ -185,25 +208,15 @@ class SchedulingEngine:
                     if (e.id, b_id, p_id, d) in x
                 ]
                 if emp_x_vars:
-                    model.Add(w[(e.id, d)] <= sum(emp_x_vars))
+                    # Enforce sum_q x_eqd <= 1
+                    model.Add(sum(emp_x_vars) <= 1)
+                    # Working status consistency: w_ed == sum_q x_eqd
+                    model.Add(w[(e.id, d)] == sum(emp_x_vars))
                 else:
                     model.Add(w[(e.id, d)] == 0)
 
-        # Hard Constraint 6: Weekly-off exclusivity (w_ed + o_ed <= 1)
-        # Guaranteed by w_ed + o_ed + n_ed == 1 - u_ed with n_ed >= 0.
-
-        # Hard Constraint 7: Weekly-off entitlement
-        # L_min_ew <= sum_{d in D_w} o_ed <= L_max_ew per 7-day calendar week
-        weeks = [self.dates[i : i + 7] for i in range(0, len(self.dates), 7)]
-        for e in self.input_data.employees:
-            for week_dates in weeks:
-                if len(week_dates) == 7:
-                    off_vars = [o[(e.id, d)] for d in week_dates]
-                    model.Add(sum(off_vars) >= e.min_weekly_off)
-                    model.Add(sum(off_vars) <= e.max_weekly_off)
-
-        # Hard Constraint 8: Minimum process coverage
-        # sum_e x_eqd >= M_qd for every operational process and applicable date
+        # Hard Constraint: Minimum Process Coverage
+        # sum_e x_{eqd} >= M_{qd} for every operational process and applicable date
         for brand_id, proc_id, min_staff, _, _ in self.procs:
             for d in self.dates:
                 if self.G[(brand_id, proc_id, d)] and min_staff > 0:
@@ -212,13 +225,9 @@ class SchedulingEngine:
                         for e in self.input_data.employees
                         if (e.id, brand_id, proc_id, d) in x
                     ]
-                    if not cand_vars:
-                        # Infeasible: zero eligible staff authorized or available
-                        pass
                     model.Add(sum(cand_vars) >= min_staff)
 
-        # Hard Constraint 9: Incompatible assignments
-        # x_eqd + x_erd <= 1 for explicitly incompatible process pairs
+        # Hard Constraint: Incompatible assignments
         for (p1, p2) in self.incompat_set:
             b1, pr1 = p1
             b2, pr2 = p2
@@ -229,80 +238,65 @@ class SchedulingEngine:
                     if v1 is not None and v2 is not None:
                         model.Add(v1 + v2 <= 1)
 
-        # Hard Constraint 10: Optional Workload & Capacity Constraints
+        # Optional Workload & Capacity Constraints
         workload = self.input_data.workload_policy
         h_vars: Dict[Tuple[str, str, str, str], cp_model.IntVar] = {}
         if workload.enabled and workload.demands and workload.capacities:
-            # Map demands: (brand_id, proc_id, date) -> demand_hours (scaled to integer tenths)
-            demands_map: Dict[Tuple[str, str, str], int] = {
+            demands_map = {
                 (d.brand_id, d.process_id, d.date): int(round(d.demand_hours * 10))
                 for d in workload.demands
             }
-            # Map capacities: (emp_id, date) -> max_daily_hours, process_caps
-            daily_caps: Dict[Tuple[str, str], int] = {
+            daily_caps = {
                 (c.employee_id, c.date): int(round(c.max_daily_hours * 10))
                 for c in workload.capacities
             }
-            proc_caps: Dict[Tuple[str, str, str, str], int] = {}
+            proc_caps = {}
             for c in workload.capacities:
                 for proc_k, max_h in c.process_capacity_hours.items():
-                    # proc_k can be brand_id:proc_id or proc_id
                     proc_caps[(c.employee_id, proc_k, c.date)] = int(round(max_h * 10))
 
             for (e_id, b_id, p_id, d), x_var in x.items():
                 h_var = model.NewIntVar(0, daily_caps.get((e_id, d), 80), f"h_{e_id}_{b_id}_{p_id}_{d}")
                 h_vars[(e_id, b_id, p_id, d)] = h_var
-
-                # h_eqd <= U_eqd * x_eqd
                 u_limit = proc_caps.get((e_id, f"{b_id}:{p_id}", d), proc_caps.get((e_id, p_id, d), daily_caps.get((e_id, d), 80)))
                 model.Add(h_var <= u_limit * x_var)
 
-            # sum_e h_eqd >= D_qd
             for (b_id, p_id, d), d_req in demands_map.items():
-                relevant_h = [
-                    h_vars[(e.id, b_id, p_id, d)]
-                    for e in self.input_data.employees
-                    if (e.id, b_id, p_id, d) in h_vars
-                ]
+                relevant_h = [h_vars[(e.id, b_id, p_id, d)] for e in self.input_data.employees if (e.id, b_id, p_id, d) in h_vars]
                 if relevant_h:
                     model.Add(sum(relevant_h) >= d_req)
 
-            # sum_q h_eqd <= H_ed * w_ed
             for e in self.input_data.employees:
                 for d in self.dates:
-                    e_h = [
-                        h_vars[(e.id, b_id, p_id, d)]
-                        for b_id, p_id, _, _, _ in self.procs
-                        if (e.id, b_id, p_id, d) in h_vars
-                    ]
+                    e_h = [h_vars[(e.id, b_id, p_id, d)] for b_id, p_id, _, _, _ in self.procs if (e.id, b_id, p_id, d) in h_vars]
                     h_limit = daily_caps.get((e.id, d), 80)
                     if e_h:
                         model.Add(sum(e_h) <= h_limit * w[(e.id, d)])
 
-        # Step 2: Formulation of Multi-Objective Terms
-        # Priority 1: Re-optimization changes (if enabled)
-        # Priority 2: Primary resource preference (penalize backup usage)
-        # Priority 3: Employee preferred weekly offs
-        # Priority 4: Minimize excess staffing
-        # Priority 5: Weekly off fairness across employees
+        # Step 2: Most-Constrained Variable Strategy
+        # Sort variables by smallest N_qd first, then primary resource preference
+        if proc_vars_by_constraint:
+            proc_vars_by_constraint.sort(key=lambda t: (t[0], t[1]))
+            strategy_vars = [t[2] for t in proc_vars_by_constraint]
+            model.AddDecisionStrategy(
+                strategy_vars,
+                cp_model.CHOOSE_FIRST,
+                cp_model.SELECT_MAX_VALUE,
+            )
 
+        # Step 3: Objective Formulation
+        # 1. Minimize re-optimization changes (if enabled)
+        # 2. Minimize backup deployment (prefer primary resources)
+        # 3. Minimize weekly-off preference overrides: min sum c_{ed} v_{ed}
+        # 4. Minimize excess staffing
         backup_penalty_terms: List[cp_model.IntVar] = []
         for (e_id, b_id, p_id, d), var in x.items():
             if self.alloc_map.get((e_id, b_id, p_id)) == "backup":
                 backup_penalty_terms.append(var)
 
-        pref_violation_terms: List[cp_model.IntVar] = []
-        for e in self.input_data.employees:
-            for d in self.dates:
-                wd = get_weekday(d)
-                u_ed = 1 if (d in e.leaves or d in e.comp_offs) else 0
-                if u_ed == 0:
-                    if wd in e.weekly_off:
-                        # Employee prefers OFF on day d. Penalize if working: w_ed
-                        pref_violation_terms.append(w[(e.id, d)])
-                    else:
-                        # Employee did not request OFF on day d. Penalize if assigned OFF: o_ed
-                        pref_violation_terms.append(o[(e.id, d)])
+        pref_override_terms: List[cp_model.IntVar] = [
+            var for var in v.values() if isinstance(var, cp_model.IntVar)
+        ]
 
         excess_staffing_terms: List[cp_model.IntVar] = []
         for brand_id, proc_id, min_staff, _, _ in self.procs:
@@ -313,25 +307,21 @@ class SchedulingEngine:
                         for e in self.input_data.employees
                         if (e.id, brand_id, proc_id, d) in x
                     ]
-                    if cand_vars:
-                        excess = model.NewIntVar(0, len(cand_vars), f"excess_{brand_id}_{proc_id}_{d}")
+                    if cand_vars and len(cand_vars) > min_staff:
+                        excess = model.NewIntVar(0, len(cand_vars) - min_staff, f"excess_{brand_id}_{proc_id}_{d}")
                         model.Add(excess == sum(cand_vars) - min_staff)
                         excess_staffing_terms.append(excess)
 
-        # Lexicographic staged optimization or calibrated non-overlapping integer weights
+        # Staged re-optimization if delta_vars active
         if lexicographic and delta_vars:
-            # Stage 1: Minimize re-optimization changes
             model.Minimize(sum(delta_vars))
             solver = cp_model.CpSolver()
             solver.parameters.max_time_in_seconds = max(1.0, self.input_data.timeout_seconds / 2)
             stg1_status = solver.Solve(model)
-
             if stg1_status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
                 min_delta = int(solver.ObjectiveValue())
-                # Constrain delta to optimal
                 model.Add(sum(delta_vars) <= min_delta)
             elif stg1_status == cp_model.INFEASIBLE:
-                # Infeasible under hard constraints
                 return self._handle_infeasible(start_time)
             elif stg1_status == cp_model.UNKNOWN:
                 elapsed = time.perf_counter() - start_time
@@ -341,27 +331,21 @@ class SchedulingEngine:
                     diagnostic_explanations=["Solver timed out during re-optimization."],
                 )
 
-        # Hierarchical Linear Objective Function
-        # Multipliers scaled strictly so lower objectives cannot override higher objectives:
-        # Re-optimization delta: 10,000,000
-        # Backup assignment: 10,000
-        # Preferred weekly off violation: 100
-        # Excess staffing: 10
-        obj_expr: List[Tuple[cp_model.IntVar, int]] = []
+        obj_terms: List[Tuple[cp_model.IntVar, int]] = []
         if delta_vars:
             for dv in delta_vars:
-                obj_expr.append((dv, 10_000_000))
+                obj_terms.append((dv, 10_000_000))
         for bv in backup_penalty_terms:
-            obj_expr.append((bv, 10_000))
-        for pv in pref_violation_terms:
-            obj_expr.append((pv, 100))
+            obj_terms.append((bv, 10_000))
+        for pv in pref_override_terms:
+            obj_terms.append((pv, 100))
         for ev in excess_staffing_terms:
-            obj_expr.append((ev, 10))
+            obj_terms.append((ev, 10))
 
-        if obj_expr:
-            model.Minimize(sum(var * coeff for var, coeff in obj_expr))
+        if obj_terms:
+            model.Minimize(sum(var * coeff for var, coeff in obj_terms))
 
-        # Step 3: Solve the Model
+        # Step 4: Solve the CP-SAT Model
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = self.input_data.timeout_seconds
         solver.parameters.num_search_workers = 4
@@ -369,7 +353,6 @@ class SchedulingEngine:
         raw_status = solver.Solve(model)
         elapsed = time.perf_counter() - start_time
 
-        # Step 4: Map Solver Status and Extract Results
         if raw_status == cp_model.OPTIMAL:
             status = SolverStatus.OPTIMAL
         elif raw_status == cp_model.FEASIBLE:
@@ -391,8 +374,7 @@ class SchedulingEngine:
                 diagnostic_explanations=[f"Unexpected solver status code: {raw_status}."],
             )
 
-        # Extract Solution Roster
-        return self._extract_solution(solver, x, w, o, n, status, elapsed)
+        return self._extract_solution(solver, x, w, o, n, v, status, elapsed)
 
     def _handle_infeasible(self, start_time: float) -> SchedulingResult:
         """Analyze and report infeasibility with diagnostic slack model."""
@@ -401,7 +383,7 @@ class SchedulingEngine:
         return SchedulingResult(
             status=SolverStatus.INFEASIBLE,
             solve_time_seconds=elapsed,
-            entries=[],  # Hard constraint: diagnostic schedules must never be presented as valid rosters
+            entries=[],
             coverage=diag_coverage,
             conflicts=diag_conflicts,
             stats=RosterStats(
@@ -424,44 +406,34 @@ class SchedulingEngine:
         w: Dict[Tuple[str, str], cp_model.IntVar],
         o: Dict[Tuple[str, str], cp_model.IntVar],
         n: Dict[Tuple[str, str], cp_model.IntVar],
+        v: Dict[Tuple[str, str], cp_model.IntVar],
         status: SolverStatus,
         elapsed: float,
     ) -> SchedulingResult:
-        """Extract structured roster entries, coverage records, and conflicts."""
         entries: List[RosterEntry] = []
         coverage: List[DayCoverage] = []
         conflicts: List[Conflict] = []
-
-        # employee_days: emp_id -> date -> "WORK" | "OFF" | "UNASSIGNED" | "LEAVE"
         employee_days: Dict[str, Dict[str, str]] = {}
 
-        # Track assignments per employee and day
-        # (emp_id, date, brand_id) -> list of process_ids
-        emp_brand_procs: Dict[Tuple[str, str, str], List[str]] = {}
-        # (emp_id, date) -> has_backup
-        emp_date_backup: Dict[Tuple[str, str], bool] = {}
-
+        # 1. Extract Roster Entries
         for (e_id, b_id, p_id, d), var in x.items():
             if solver.Value(var) == 1:
-                key = (e_id, d, b_id)
-                emp_brand_procs.setdefault(key, []).append(p_id)
-                if self.alloc_map.get((e_id, b_id, p_id)) == "backup":
-                    emp_date_backup[(e_id, d)] = True
+                emp = self.emp_map[e_id]
+                is_pref_off = get_weekday(d) in emp.weekly_off
+                is_backup = (self.alloc_map.get((e_id, b_id, p_id)) == "backup")
 
-        for (e_id, d, b_id), proc_list in emp_brand_procs.items():
-            emp = self.emp_map[e_id]
-            is_pref_off = get_weekday(d) in emp.weekly_off
-            entries.append(
-                RosterEntry(
-                    date=d,
-                    employee_id=e_id,
-                    brand_id=b_id,
-                    processes=sorted(proc_list),
-                    is_weekly_off=is_pref_off,
-                    is_backup=emp_date_backup.get((e_id, d), False),
+                entries.append(
+                    RosterEntry(
+                        date=d,
+                        employee_id=e_id,
+                        brand_id=b_id,
+                        processes=[p_id],
+                        is_weekly_off=is_pref_off,
+                        is_backup=is_backup,
+                    )
                 )
-            )
 
+        # 2. Extract Employee Day States
         for e in self.input_data.employees:
             emp_days: Dict[str, str] = {}
             for d in self.dates:
@@ -477,7 +449,7 @@ class SchedulingEngine:
                     emp_days[d] = "UNASSIGNED"
             employee_days[e.id] = emp_days
 
-        # Compute Coverage
+        # 3. Calculate Coverage
         for brand_id, proc_id, min_staff, _, _ in self.procs:
             for d in self.dates:
                 is_op = self.G[(brand_id, proc_id, d)]
@@ -522,7 +494,10 @@ class SchedulingEngine:
                     )
                 )
 
-        # Add warnings for weekly-off overrides (soft preference overrides)
+        # 4. Independent Validation and Categorization
+        val_report = RosterValidator.validate(self.input_data, entries, employee_days)
+
+        # Add warnings for weekly-off overrides
         for entry in entries:
             emp = self.emp_map[entry.employee_id]
             if get_weekday(entry.date) in emp.weekly_off:
@@ -536,33 +511,51 @@ class SchedulingEngine:
                         date=entry.date,
                         brand_id=entry.brand_id,
                         employee_id=entry.employee_id,
+                        process_id=entry.processes[0] if entry.processes else None,
                         message=f"{emp.name} ({emp.id}) worked on preferred weekly off to cover {b_name} ({', '.join(entry.processes)}).",
-                        suggestion="Mandatory coverage took precedence over preferred weekly off.",
+                        suggestion="Client operational coverage took precedence over preferred weekly off.",
                     )
                 )
 
-        # Independent Validation of Generated Solution
-        is_valid, validation_errors = RosterValidator.validate(
-            self.input_data, entries, employee_days
-        )
-        for err in validation_errors:
+        # Add warnings for backup deployments
+        for entry in entries:
+            if entry.is_backup:
+                emp = self.emp_map[entry.employee_id]
+                brand = self.brand_map.get(entry.brand_id)
+                b_name = brand.name if brand else entry.brand_id
+                conflicts.append(
+                    Conflict(
+                        id=f"backup-{entry.date}-{entry.employee_id}-{entry.brand_id}",
+                        type="BACKUP_ASSIGNMENT",
+                        severity="warning",
+                        date=entry.date,
+                        brand_id=entry.brand_id,
+                        employee_id=entry.employee_id,
+                        process_id=entry.processes[0] if entry.processes else None,
+                        message=f"{emp.name} ({emp.id}) deployed as backup for {b_name} ({', '.join(entry.processes)}).",
+                        suggestion="Assigned backup resource to meet operational staffing requirements.",
+                    )
+                )
+
+        # Record any hard failures from independent validation
+        for err in val_report.hard_failures:
             conflicts.append(
                 Conflict(
-                    id=f"val-err-{len(conflicts)}",
-                    type="VALIDATION_ERROR",
+                    id=f"hard-err-{len(conflicts)}",
+                    type="HARD_CONSTRAINT_FAILURE",
                     severity="error",
                     date=self.dates[0] if self.dates else "",
                     message=err,
                 )
             )
 
-        # Calculate Stats
+        # Calculate Statistics
         op_slots = sum(1 for c in coverage if c.operating)
         cov_slots = sum(1 for c in coverage if c.status == "covered")
         gap_slots = sum(1 for c in coverage if c.status == "gap")
         under_slots = sum(1 for c in coverage if c.status == "understaffed")
-        warn_cnt = sum(1 for cf in conflicts if cf.severity == "warning")
-        err_cnt = sum(1 for cf in conflicts if cf.severity == "error")
+        warn_cnt = len(val_report.warnings)
+        err_cnt = len(val_report.hard_failures)
         cov_pct = round((cov_slots / op_slots * 100), 1) if op_slots > 0 else 100.0
 
         stats = RosterStats(
@@ -585,4 +578,5 @@ class SchedulingEngine:
             stats=stats,
             diagnostic_explanations=[],
             employee_days=employee_days,
+            validation_report=val_report,
         )

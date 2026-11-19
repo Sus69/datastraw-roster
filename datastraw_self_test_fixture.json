@@ -1,8 +1,8 @@
 {
   "metadata": {
     "title": "DataStraw Smart Workforce Scheduling Self-Test Fixture",
-    "employees_count": 30,
-    "pods_count": 3,
+    "employees_count": 35,
+    "pods_count": 4,
     "brands_count": 15,
     "single_primary_brands_count": 12,
     "multi_resource_brands_count": 3,
@@ -41,6 +41,11 @@
       "id": "POD3",
       "name": "Pod Gamma",
       "lead_id": "E21"
+    },
+    {
+      "id": "POD4",
+      "name": "Pod Delta",
+      "lead_id": "E31"
     }
   ],
   "employees": [
@@ -52,9 +57,7 @@
         0
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E02",
@@ -64,9 +67,7 @@
         1
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E03",
@@ -76,9 +77,7 @@
         2
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E04",
@@ -88,9 +87,7 @@
         3
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E05",
@@ -100,9 +97,7 @@
         4
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E06",
@@ -112,9 +107,7 @@
         5
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E07",
@@ -124,9 +117,7 @@
         6
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E08",
@@ -136,9 +127,7 @@
         0
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E09",
@@ -148,9 +137,7 @@
         1
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E10",
@@ -160,9 +147,7 @@
         2
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E11",
@@ -172,9 +157,7 @@
         2
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E12",
@@ -184,9 +167,7 @@
         3
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E13",
@@ -196,9 +177,7 @@
         4
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E14",
@@ -208,9 +187,7 @@
         5
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E15",
@@ -220,9 +197,7 @@
         6
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E16",
@@ -232,9 +207,7 @@
         0
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E17",
@@ -244,9 +217,7 @@
         5
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E18",
@@ -256,9 +227,7 @@
         2
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E19",
@@ -268,9 +237,7 @@
         3
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E20",
@@ -280,9 +247,7 @@
         4
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E21",
@@ -292,9 +257,7 @@
         3
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E22",
@@ -304,9 +267,7 @@
         0
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E23",
@@ -316,9 +277,7 @@
         1
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E24",
@@ -328,9 +287,7 @@
         2
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E25",
@@ -340,9 +297,7 @@
         3
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E26",
@@ -352,9 +307,7 @@
         4
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E27",
@@ -364,9 +317,7 @@
         5
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E28",
@@ -376,9 +327,7 @@
         6
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E29",
@@ -388,9 +337,7 @@
         0
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
     },
     {
       "id": "E30",
@@ -400,9 +347,57 @@
         1
       ],
       "leaves": [],
-      "comp_offs": [],
-      "min_weekly_off": 1,
-      "max_weekly_off": 2
+      "comp_offs": []
+    },
+    {
+      "id": "E31",
+      "name": "Zoya Sheikh",
+      "pod_id": "POD4",
+      "weekly_off": [
+        2
+      ],
+      "leaves": [],
+      "comp_offs": []
+    },
+    {
+      "id": "E32",
+      "name": "Amit Tiwari",
+      "pod_id": "POD4",
+      "weekly_off": [
+        3
+      ],
+      "leaves": [],
+      "comp_offs": []
+    },
+    {
+      "id": "E33",
+      "name": "Lakshmi Venkat",
+      "pod_id": "POD4",
+      "weekly_off": [
+        4
+      ],
+      "leaves": [],
+      "comp_offs": []
+    },
+    {
+      "id": "E34",
+      "name": "Om Prakash",
+      "pod_id": "POD4",
+      "weekly_off": [
+        5
+      ],
+      "leaves": [],
+      "comp_offs": []
+    },
+    {
+      "id": "E35",
+      "name": "Kavita Sen",
+      "pod_id": "POD4",
+      "weekly_off": [
+        6
+      ],
+      "leaves": [],
+      "comp_offs": []
     }
   ],
   "brands": [
@@ -682,7 +677,7 @@
         {
           "process_id": "CS",
           "rule": "ALL_YEAR",
-          "min_staff": 2
+          "min_staff": 1
         }
       ]
     }
@@ -881,12 +876,6 @@
       "role": "primary"
     },
     {
-      "employee_id": "E30",
-      "brand_id": "B15",
-      "process_id": "CS",
-      "role": "primary"
-    },
-    {
       "employee_id": "E22",
       "brand_id": "B01",
       "process_id": "CS",
@@ -905,9 +894,27 @@
       "role": "backup"
     },
     {
+      "employee_id": "E06",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E06",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
       "employee_id": "E07",
       "brand_id": "B02",
       "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E07",
+      "brand_id": "B03",
+      "process_id": "NDR",
       "role": "backup"
     },
     {
@@ -917,13 +924,7 @@
       "role": "backup"
     },
     {
-      "employee_id": "E09",
-      "brand_id": "B04",
-      "process_id": "CS",
-      "role": "backup"
-    },
-    {
-      "employee_id": "E10",
+      "employee_id": "E08",
       "brand_id": "B04",
       "process_id": "ACC",
       "role": "backup"
@@ -936,6 +937,18 @@
     },
     {
       "employee_id": "E10",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E06",
       "brand_id": "B05",
       "process_id": "CS",
       "role": "backup"
@@ -943,7 +956,25 @@
     {
       "employee_id": "E18",
       "brand_id": "B06",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E19",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E20",
+      "brand_id": "B06",
       "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E20",
+      "brand_id": "B07",
+      "process_id": "ACC",
       "role": "backup"
     },
     {
@@ -953,9 +984,9 @@
       "role": "backup"
     },
     {
-      "employee_id": "E20",
-      "brand_id": "B07",
-      "process_id": "ACC",
+      "employee_id": "E18",
+      "brand_id": "B08",
+      "process_id": "NDR",
       "role": "backup"
     },
     {
@@ -965,8 +996,20 @@
       "role": "backup"
     },
     {
+      "employee_id": "E19",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E20",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
       "employee_id": "E18",
-      "brand_id": "B10",
+      "brand_id": "B09",
       "process_id": "CS",
       "role": "backup"
     },
@@ -974,6 +1017,12 @@
       "employee_id": "E20",
       "brand_id": "B10",
       "process_id": "NDR",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B10",
+      "process_id": "CS",
       "role": "backup"
     },
     {
@@ -985,11 +1034,23 @@
     {
       "employee_id": "E21",
       "brand_id": "B11",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E23",
+      "brand_id": "B11",
       "process_id": "CS",
       "role": "backup"
     },
     {
       "employee_id": "E23",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E21",
       "brand_id": "B12",
       "process_id": "CS",
       "role": "backup"
@@ -1007,9 +1068,93 @@
       "role": "backup"
     },
     {
-      "employee_id": "E24",
+      "employee_id": "E30",
       "brand_id": "B15",
       "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E23",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B08",
+      "process_id": "NDR",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E31",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E32",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E33",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E34",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E34",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E35",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E35",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E31",
+      "brand_id": "B08",
+      "process_id": "NDR",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E32",
+      "brand_id": "B10",
+      "process_id": "NDR",
       "role": "backup"
     }
   ],
@@ -1036,12 +1181,6 @@
     {
       "employee_id": "E01",
       "brand_id": "B01",
-      "process_id": "RET",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E22",
-      "brand_id": "B01",
       "process_id": "CS",
       "date": "2026-11-24"
     },
@@ -1054,53 +1193,59 @@
     {
       "employee_id": "E01",
       "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E24",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E24",
+      "brand_id": "B01",
       "process_id": "RET",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E01",
-      "brand_id": "B01",
-      "process_id": "CS",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E01",
+      "employee_id": "E24",
       "brand_id": "B01",
       "process_id": "RET",
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E01",
-      "brand_id": "B01",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E01",
+      "employee_id": "E24",
       "brand_id": "B01",
       "process_id": "RET",
       "date": "2026-11-27"
     },
     {
-      "employee_id": "E01",
-      "brand_id": "B01",
-      "process_id": "CS",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E01",
+      "employee_id": "E24",
       "brand_id": "B01",
       "process_id": "RET",
       "date": "2026-11-28"
     },
     {
-      "employee_id": "E01",
-      "brand_id": "B01",
-      "process_id": "CS",
-      "date": "2026-11-29"
-    },
-    {
-      "employee_id": "E01",
+      "employee_id": "E24",
       "brand_id": "B01",
       "process_id": "RET",
       "date": "2026-11-29"
@@ -1109,12 +1254,6 @@
       "employee_id": "E02",
       "brand_id": "B02",
       "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E02",
-      "brand_id": "B02",
-      "process_id": "RET",
       "date": "2026-11-23"
     },
     {
@@ -1132,31 +1271,13 @@
     {
       "employee_id": "E02",
       "brand_id": "B02",
-      "process_id": "RET",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E02",
-      "brand_id": "B02",
       "process_id": "CS",
       "date": "2026-11-26"
     },
     {
       "employee_id": "E02",
       "brand_id": "B02",
-      "process_id": "RET",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E02",
-      "brand_id": "B02",
       "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E02",
-      "brand_id": "B02",
-      "process_id": "RET",
       "date": "2026-11-27"
     },
     {
@@ -1168,68 +1289,92 @@
     {
       "employee_id": "E02",
       "brand_id": "B02",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E06",
+      "brand_id": "B02",
       "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E06",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E06",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E06",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E06",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E08",
+      "brand_id": "B03",
+      "process_id": "CS",
       "date": "2026-11-28"
     },
     {
       "employee_id": "E07",
-      "brand_id": "B02",
-      "process_id": "CS",
-      "date": "2026-11-29"
-    },
-    {
-      "employee_id": "E03",
-      "brand_id": "B03",
-      "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E03",
       "brand_id": "B03",
       "process_id": "NDR",
       "date": "2026-11-23"
     },
     {
-      "employee_id": "E03",
-      "brand_id": "B03",
-      "process_id": "CS",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E03",
+      "employee_id": "E07",
       "brand_id": "B03",
       "process_id": "NDR",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E03",
-      "brand_id": "B03",
-      "process_id": "CS",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E03",
+      "employee_id": "E07",
       "brand_id": "B03",
       "process_id": "NDR",
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E03",
-      "brand_id": "B03",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E03",
+      "employee_id": "E07",
       "brand_id": "B03",
       "process_id": "NDR",
       "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E03",
-      "brand_id": "B03",
-      "process_id": "CS",
-      "date": "2026-11-28"
     },
     {
       "employee_id": "E03",
@@ -1245,18 +1390,90 @@
     },
     {
       "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E08",
       "brand_id": "B04",
       "process_id": "ACC",
       "date": "2026-11-23"
     },
     {
-      "employee_id": "E04",
+      "employee_id": "E34",
       "brand_id": "B04",
-      "process_id": "CS",
-      "date": "2026-11-23"
+      "process_id": "ACC",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E08",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E08",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E08",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E34",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-28"
     },
     {
       "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E34",
       "brand_id": "B04",
       "process_id": "NDR",
       "date": "2026-11-23"
@@ -1264,353 +1481,245 @@
     {
       "employee_id": "E09",
       "brand_id": "B04",
-      "process_id": "CS",
-      "date": "2026-11-24"
-    },
-    {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "ACC",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "CS",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E04",
-      "brand_id": "B04",
       "process_id": "NDR",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "ACC",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "CS",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E04",
+      "employee_id": "E09",
       "brand_id": "B04",
       "process_id": "NDR",
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "ACC",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E04",
+      "employee_id": "E09",
       "brand_id": "B04",
       "process_id": "NDR",
       "date": "2026-11-27"
     },
     {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "ACC",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "CS",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E04",
+      "employee_id": "E09",
       "brand_id": "B04",
       "process_id": "NDR",
       "date": "2026-11-28"
     },
     {
-      "employee_id": "E04",
+      "employee_id": "E09",
       "brand_id": "B04",
-      "process_id": "ACC",
+      "process_id": "NDR",
       "date": "2026-11-29"
     },
     {
-      "employee_id": "E04",
-      "brand_id": "B04",
+      "employee_id": "E05",
+      "brand_id": "B05",
       "process_id": "CS",
-      "date": "2026-11-29"
+      "date": "2026-11-23"
     },
     {
-      "employee_id": "E04",
-      "brand_id": "B04",
-      "process_id": "NDR",
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
       "date": "2026-11-29"
     },
     {
       "employee_id": "E10",
-      "brand_id": "B04",
-      "process_id": "ACC",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
       "date": "2026-11-24"
     },
     {
-      "employee_id": "E05",
-      "brand_id": "B05",
-      "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E05",
-      "brand_id": "B05",
-      "process_id": "RET",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E05",
-      "brand_id": "B05",
+      "employee_id": "E20",
+      "brand_id": "B06",
       "process_id": "CS",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E05",
-      "brand_id": "B05",
-      "process_id": "RET",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E05",
-      "brand_id": "B05",
+      "employee_id": "E11",
+      "brand_id": "B06",
       "process_id": "CS",
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E05",
-      "brand_id": "B05",
-      "process_id": "RET",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E05",
-      "brand_id": "B05",
+      "employee_id": "E11",
+      "brand_id": "B06",
       "process_id": "CS",
       "date": "2026-11-27"
     },
     {
-      "employee_id": "E05",
-      "brand_id": "B05",
-      "process_id": "RET",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E05",
-      "brand_id": "B05",
+      "employee_id": "E20",
+      "brand_id": "B06",
       "process_id": "CS",
       "date": "2026-11-28"
     },
     {
-      "employee_id": "E05",
-      "brand_id": "B05",
-      "process_id": "RET",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E05",
-      "brand_id": "B05",
+      "employee_id": "E11",
+      "brand_id": "B06",
       "process_id": "CS",
       "date": "2026-11-29"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "ACC",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "RET",
-      "date": "2026-11-23"
     },
     {
       "employee_id": "E18",
       "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E31",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E31",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E31",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E31",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E19",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E35",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E35",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E35",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
       "process_id": "CS",
       "date": "2026-11-24"
     },
     {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "ACC",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
+      "employee_id": "E12",
+      "brand_id": "B07",
       "process_id": "CS",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "RET",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "ACC",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
+      "employee_id": "E12",
+      "brand_id": "B07",
       "process_id": "CS",
       "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "RET",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "ACC",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "RET",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "ACC",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "CS",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "RET",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "CS",
-      "date": "2026-11-29"
-    },
-    {
-      "employee_id": "E11",
-      "brand_id": "B06",
-      "process_id": "RET",
-      "date": "2026-11-29"
     },
     {
       "employee_id": "E19",
       "brand_id": "B07",
       "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "ACC",
-      "date": "2026-11-24"
-    },
-    {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "CS",
-      "date": "2026-11-24"
-    },
-    {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "ACC",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "CS",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "ACC",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "CS",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "ACC",
       "date": "2026-11-27"
     },
     {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "ACC",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E12",
+      "employee_id": "E19",
       "brand_id": "B07",
       "process_id": "CS",
       "date": "2026-11-28"
     },
     {
-      "employee_id": "E12",
-      "brand_id": "B07",
-      "process_id": "ACC",
-      "date": "2026-11-29"
-    },
-    {
-      "employee_id": "E12",
+      "employee_id": "E19",
       "brand_id": "B07",
       "process_id": "CS",
       "date": "2026-11-29"
@@ -1622,63 +1731,69 @@
       "date": "2026-11-23"
     },
     {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "CS",
-      "date": "2026-11-23"
+      "employee_id": "E23",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-24"
     },
     {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "NDR",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "CS",
+      "employee_id": "E32",
+      "brand_id": "B07",
+      "process_id": "ACC",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "NDR",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "CS",
+      "employee_id": "E32",
+      "brand_id": "B07",
+      "process_id": "ACC",
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "NDR",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "CS",
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
       "date": "2026-11-27"
     },
     {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "NDR",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E13",
-      "brand_id": "B08",
-      "process_id": "CS",
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
       "date": "2026-11-28"
     },
     {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-29"
+    },
+    {
       "employee_id": "E13",
       "brand_id": "B08",
-      "process_id": "NDR",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
       "date": "2026-11-28"
     },
     {
@@ -1688,88 +1803,88 @@
       "date": "2026-11-29"
     },
     {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "ACC",
+      "employee_id": "E31",
+      "brand_id": "B08",
+      "process_id": "NDR",
       "date": "2026-11-23"
     },
     {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "RET",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "ACC",
+      "employee_id": "E30",
+      "brand_id": "B08",
+      "process_id": "NDR",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "CS",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "RET",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "ACC",
+      "employee_id": "E30",
+      "brand_id": "B08",
+      "process_id": "NDR",
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "CS",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "RET",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "ACC",
+      "employee_id": "E30",
+      "brand_id": "B08",
+      "process_id": "NDR",
       "date": "2026-11-27"
     },
     {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "RET",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E14",
-      "brand_id": "B09",
-      "process_id": "ACC",
+      "employee_id": "E30",
+      "brand_id": "B08",
+      "process_id": "NDR",
       "date": "2026-11-28"
     },
     {
       "employee_id": "E14",
       "brand_id": "B09",
       "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B09",
+      "process_id": "CS",
       "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E35",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E35",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E19",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-27"
     },
     {
       "employee_id": "E14",
@@ -1784,6 +1899,36 @@
       "date": "2026-11-29"
     },
     {
+      "employee_id": "E33",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E33",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E33",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E33",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
       "employee_id": "E15",
       "brand_id": "B10",
       "process_id": "CS",
@@ -1792,293 +1937,293 @@
     {
       "employee_id": "E15",
       "brand_id": "B10",
-      "process_id": "NDR",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E15",
-      "brand_id": "B10",
       "process_id": "CS",
       "date": "2026-11-24"
-    },
-    {
-      "employee_id": "E15",
-      "brand_id": "B10",
-      "process_id": "NDR",
-      "date": "2026-11-24"
-    },
-    {
-      "employee_id": "E15",
-      "brand_id": "B10",
-      "process_id": "CS",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E15",
-      "brand_id": "B10",
-      "process_id": "NDR",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E15",
-      "brand_id": "B10",
-      "process_id": "CS",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E15",
-      "brand_id": "B10",
-      "process_id": "NDR",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E15",
-      "brand_id": "B10",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E15",
-      "brand_id": "B10",
-      "process_id": "NDR",
-      "date": "2026-11-27"
     },
     {
       "employee_id": "E18",
       "brand_id": "B10",
       "process_id": "CS",
-      "date": "2026-11-28"
+      "date": "2026-11-25"
     },
     {
       "employee_id": "E15",
       "brand_id": "B10",
       "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B10",
+      "process_id": "CS",
       "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E32",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-24"
     },
     {
       "employee_id": "E15",
       "brand_id": "B10",
       "process_id": "NDR",
-      "date": "2026-11-29"
+      "date": "2026-11-25"
     },
     {
       "employee_id": "E20",
       "brand_id": "B10",
       "process_id": "NDR",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "RET",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "CS",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "RET",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "CS",
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "RET",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "CS",
+      "employee_id": "E32",
+      "brand_id": "B10",
+      "process_id": "NDR",
       "date": "2026-11-27"
     },
     {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "RET",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "CS",
+      "employee_id": "E32",
+      "brand_id": "B10",
+      "process_id": "NDR",
       "date": "2026-11-28"
     },
     {
-      "employee_id": "E25",
-      "brand_id": "B11",
-      "process_id": "RET",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "ACC",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
-      "employee_id": "E23",
-      "brand_id": "B12",
-      "process_id": "CS",
-      "date": "2026-11-24"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "ACC",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "CS",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "ACC",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "CS",
-      "date": "2026-11-26"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "ACC",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "ACC",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "CS",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "ACC",
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "NDR",
       "date": "2026-11-29"
     },
     {
-      "employee_id": "E26",
-      "brand_id": "B12",
-      "process_id": "CS",
-      "date": "2026-11-29"
-    },
-    {
-      "employee_id": "E27",
-      "brand_id": "B13",
+      "employee_id": "E25",
+      "brand_id": "B11",
       "process_id": "CS",
       "date": "2026-11-23"
     },
     {
-      "employee_id": "E27",
-      "brand_id": "B13",
-      "process_id": "CS",
-      "date": "2026-11-24"
-    },
-    {
-      "employee_id": "E27",
-      "brand_id": "B13",
+      "employee_id": "E25",
+      "brand_id": "B11",
       "process_id": "CS",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E27",
-      "brand_id": "B13",
+      "employee_id": "E25",
+      "brand_id": "B11",
       "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B11",
+      "process_id": "RET",
       "date": "2026-11-26"
     },
     {
       "employee_id": "E21",
-      "brand_id": "B13",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
       "process_id": "CS",
       "date": "2026-11-27"
     },
     {
-      "employee_id": "E27",
-      "brand_id": "B13",
+      "employee_id": "E26",
+      "brand_id": "B12",
       "process_id": "CS",
       "date": "2026-11-28"
     },
     {
-      "employee_id": "E27",
-      "brand_id": "B13",
+      "employee_id": "E21",
+      "brand_id": "B12",
       "process_id": "CS",
       "date": "2026-11-29"
     },
     {
-      "employee_id": "E28",
-      "brand_id": "B13",
-      "process_id": "RET",
+      "employee_id": "E23",
+      "brand_id": "B12",
+      "process_id": "ACC",
       "date": "2026-11-23"
     },
     {
-      "employee_id": "E28",
-      "brand_id": "B13",
-      "process_id": "RET",
-      "date": "2026-11-24"
-    },
-    {
-      "employee_id": "E28",
-      "brand_id": "B13",
-      "process_id": "RET",
+      "employee_id": "E23",
+      "brand_id": "B12",
+      "process_id": "ACC",
       "date": "2026-11-25"
     },
     {
-      "employee_id": "E28",
-      "brand_id": "B13",
-      "process_id": "RET",
+      "employee_id": "E23",
+      "brand_id": "B12",
+      "process_id": "ACC",
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E28",
-      "brand_id": "B13",
-      "process_id": "RET",
+      "employee_id": "E23",
+      "brand_id": "B12",
+      "process_id": "ACC",
       "date": "2026-11-27"
     },
     {
       "employee_id": "E23",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E28",
       "brand_id": "B13",
       "process_id": "RET",
       "date": "2026-11-28"
@@ -2126,7 +2271,7 @@
       "date": "2026-11-28"
     },
     {
-      "employee_id": "E18",
+      "employee_id": "E16",
       "brand_id": "B14",
       "process_id": "CS",
       "date": "2026-11-29"
@@ -2156,7 +2301,7 @@
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E22",
+      "employee_id": "E17",
       "brand_id": "B14",
       "process_id": "ACC",
       "date": "2026-11-27"
@@ -2174,12 +2319,6 @@
       "date": "2026-11-29"
     },
     {
-      "employee_id": "E24",
-      "brand_id": "B15",
-      "process_id": "CS",
-      "date": "2026-11-23"
-    },
-    {
       "employee_id": "E29",
       "brand_id": "B15",
       "process_id": "CS",
@@ -2192,19 +2331,7 @@
       "date": "2026-11-24"
     },
     {
-      "employee_id": "E30",
-      "brand_id": "B15",
-      "process_id": "CS",
-      "date": "2026-11-24"
-    },
-    {
       "employee_id": "E29",
-      "brand_id": "B15",
-      "process_id": "CS",
-      "date": "2026-11-25"
-    },
-    {
-      "employee_id": "E30",
       "brand_id": "B15",
       "process_id": "CS",
       "date": "2026-11-25"
@@ -2216,19 +2343,7 @@
       "date": "2026-11-26"
     },
     {
-      "employee_id": "E30",
-      "brand_id": "B15",
-      "process_id": "CS",
-      "date": "2026-11-26"
-    },
-    {
       "employee_id": "E29",
-      "brand_id": "B15",
-      "process_id": "CS",
-      "date": "2026-11-27"
-    },
-    {
-      "employee_id": "E30",
       "brand_id": "B15",
       "process_id": "CS",
       "date": "2026-11-27"
@@ -2240,19 +2355,7 @@
       "date": "2026-11-28"
     },
     {
-      "employee_id": "E30",
-      "brand_id": "B15",
-      "process_id": "CS",
-      "date": "2026-11-28"
-    },
-    {
-      "employee_id": "E24",
-      "brand_id": "B15",
-      "process_id": "CS",
-      "date": "2026-11-29"
-    },
-    {
-      "employee_id": "E30",
+      "employee_id": "E29",
       "brand_id": "B15",
       "process_id": "CS",
       "date": "2026-11-29"

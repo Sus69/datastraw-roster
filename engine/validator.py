@@ -1,7 +1,10 @@
-"""Independent Hard-Constraint Validator for Workforce Scheduling.
+"""Independent Hard-Constraint Validator and Reporting Engine.
 
-Verifies generated rosters against every mathematical constraint without trusting
-the solver output.
+Categorizes roster validation results into:
+- Hard-constraint failures: Leave clashes, comp-off clashes, multiple daily assignments,
+  unauthorized assignments, closed process assignments, and coverage shortages.
+- Warnings: Preferred weekly-off overrides, backup resource assignments.
+- Informational results: Available unassigned employees, normal weekly offs, coverage maintained.
 """
 
 from __future__ import annotations
@@ -14,16 +17,14 @@ from .domain import (
     ProcessId,
     RosterEntry,
     SchedulingInput,
+    ValidationReport,
 )
 
 
 def get_weekday(iso_date: str) -> int:
     """Return weekday integer 0=Sun, 1=Mon, ..., 6=Sat (matching JS getDay convention)."""
-    # Python datetime.weekday(): 0=Mon, 1=Tue, ..., 6=Sun
-    # JS getDay(): 0=Sun, 1=Mon, ..., 6=Sat
     dt = datetime.date.fromisoformat(iso_date)
-    py_wd = dt.weekday()
-    return (py_wd + 1) % 7
+    return (dt.weekday() + 1) % 7
 
 
 def is_process_operating(
@@ -47,7 +48,7 @@ def is_process_operating(
 
 
 class RosterValidator:
-    """Independent verifier for hard constraints."""
+    """Independent validator separating hard-constraint failures, warnings, and informational results."""
 
     @classmethod
     def validate(
@@ -55,24 +56,21 @@ class RosterValidator:
         input_data: SchedulingInput,
         entries: List[RosterEntry],
         employee_days: Dict[str, Dict[str, str]] | None = None,
-    ) -> Tuple[bool, List[str]]:
-        """Validate every hard constraint against the roster entries.
-
-        Returns:
-            (is_valid, list_of_violations)
-        """
-        violations: List[str] = []
+    ) -> ValidationReport:
+        hard_failures: List[str] = []
+        warnings: List[str] = []
+        informational: List[str] = []
 
         holiday_dates = {h.date for h in input_data.holidays}
         emp_map = {e.id: e for e in input_data.employees}
         brand_map = {b.id: b for b in input_data.brands}
 
-        # Authorizations map: (emp_id, brand_id, process_id) -> role
+        # Authorizations map: (emp_id, brand_id, process_id) -> role ('primary' or 'backup')
         alloc_map: Dict[Tuple[str, str, str], str] = {}
         for a in input_data.allocations:
             alloc_map[(a.employee_id, a.brand_id, a.process_id)] = a.role.lower()
 
-        # Incompatibility map: set of frozen pairs
+        # Incompatibility map
         incompat_pairs: Set[Tuple[Tuple[str, str], Tuple[str, str]]] = set()
         for ip in input_data.incompatible_pairs:
             p1 = (ip.brand_id_1, ip.process_id_1)
@@ -80,40 +78,49 @@ class RosterValidator:
             incompat_pairs.add((p1, p2))
             incompat_pairs.add((p2, p1))
 
-        # Check entries for assignments
-        # emp_id -> date -> set of (brand_id, process_id)
-        emp_date_procs: Dict[Tuple[str, str], Set[Tuple[str, str]]] = {}
-        # (brand_id, process_id, date) -> set of scheduled employee_ids
-        proc_date_scheduled: Dict[Tuple[str, str, str], Set[str]] = {}
+        # emp_id -> date -> list of (brand_id, process_id)
+        emp_date_procs: Dict[Tuple[str, str], List[Tuple[str, str]]] = {}
+        # (brand_id, process_id, date) -> list of scheduled employee_ids
+        proc_date_scheduled: Dict[Tuple[str, str, str], List[str]] = {}
 
+        # 1. Inspect Roster Entries
         for entry in entries:
             emp = emp_map.get(entry.employee_id)
             if not emp:
-                violations.append(f"Unknown employee {entry.employee_id} in roster entry on {entry.date}.")
+                hard_failures.append(f"Unknown employee {entry.employee_id} in roster on {entry.date}.")
                 continue
 
-            # Hard Constraint: Employee Availability (Leave / Comp-off)
-            is_unavailable = (entry.date in emp.leaves) or (entry.date in emp.comp_offs)
-            if is_unavailable and len(entry.processes) > 0:
-                violations.append(
-                    f"Employee {emp.name} ({emp.id}) is scheduled on {entry.date} while on approved leave/comp-off."
+            # Hard Constraint: Approved Leave and Comp-off
+            if entry.date in emp.leaves:
+                hard_failures.append(
+                    f"Employee {emp.name} ({emp.id}) is scheduled on {entry.date} during approved leave."
+                )
+            if entry.date in emp.comp_offs:
+                hard_failures.append(
+                    f"Employee {emp.name} ({emp.id}) is scheduled on {entry.date} during approved comp-off."
                 )
 
+            # Record processes
+            ed_key = (entry.employee_id, entry.date)
             for proc_id in entry.processes:
                 q_key = (entry.brand_id, proc_id)
-                ed_key = (entry.employee_id, entry.date)
-                emp_date_procs.setdefault(ed_key, set()).add(q_key)
+                emp_date_procs.setdefault(ed_key, []).append(q_key)
 
-                # Track coverage
                 proc_key = (entry.brand_id, proc_id, entry.date)
-                proc_date_scheduled.setdefault(proc_key, set()).add(entry.employee_id)
+                proc_date_scheduled.setdefault(proc_key, []).append(entry.employee_id)
 
                 # Hard Constraint: Assignment Eligibility
                 alloc_key = (entry.employee_id, entry.brand_id, proc_id)
-                if alloc_key not in alloc_map:
-                    violations.append(
-                        f"Unauthorized assignment: Employee {emp.name} ({emp.id}) assigned to "
-                        f"{entry.brand_id}-{proc_id} on {entry.date} without primary or backup authorization."
+                role = alloc_map.get(alloc_key)
+                if role is None:
+                    hard_failures.append(
+                        f"Unauthorized employee assignment: {emp.name} ({emp.id}) assigned to "
+                        f"{entry.brand_id}-{proc_id} on {entry.date} without authorization."
+                    )
+                elif role == "backup":
+                    warnings.append(
+                        f"Backup assignment: {emp.name} ({emp.id}) deployed as backup for "
+                        f"{entry.brand_id}-{proc_id} on {entry.date}."
                     )
 
                 # Hard Constraint: Operating Calendar
@@ -123,26 +130,43 @@ class RosterValidator:
                     custom_dates = set(bp.custom_operating_dates)
                     operating = is_process_operating(bp.rule, entry.date, holiday_dates, custom_dates)
                     if not operating:
-                        violations.append(
+                        hard_failures.append(
                             f"Operating calendar violation: Employee {emp.name} ({emp.id}) assigned to "
                             f"{entry.brand_id}-{proc_id} on {entry.date}, but process is closed."
                         )
 
-        # Hard Constraint: Incompatible Assignments
-        for (emp_id, date), assigned_procs in emp_date_procs.items():
-            assigned_list = list(assigned_procs)
-            for i in range(len(assigned_list)):
-                for j in range(i + 1, len(assigned_list)):
-                    pair = (assigned_list[i], assigned_list[j])
+            # Warning: Preferred weekly off overridden
+            wd = get_weekday(entry.date)
+            if wd in emp.weekly_off and len(entry.processes) > 0:
+                warnings.append(
+                    f"Preferred weekly off overridden: {emp.name} ({emp.id}) scheduled on preferred off "
+                    f"({entry.date}) to cover {entry.brand_id} ({', '.join(entry.processes)})."
+                )
+
+        # 2. Hard Constraint: Exclusive Daily Employee Assignment (sum_q x_eqd <= 1)
+        for (emp_id, date), procs in emp_date_procs.items():
+            if len(procs) > 1:
+                emp = emp_map.get(emp_id)
+                emp_name = emp.name if emp else emp_id
+                proc_desc = ", ".join(f"{b}-{p}" for b, p in procs)
+                hard_failures.append(
+                    f"Multiple daily assignments: Employee {emp_name} ({emp_id}) assigned to "
+                    f"{len(procs)} brand/process combinations on {date} ({proc_desc}). Max allowed is 1."
+                )
+
+            # Incompatible duty check
+            for i in range(len(procs)):
+                for j in range(i + 1, len(procs)):
+                    pair = (procs[i], procs[j])
                     if pair in incompat_pairs:
                         emp = emp_map.get(emp_id)
-                        emp_label = emp.name if emp else emp_id
-                        violations.append(
-                            f"Incompatible duty conflict: Employee {emp_label} ({emp_id}) assigned to both "
+                        emp_name = emp.name if emp else emp_id
+                        hard_failures.append(
+                            f"Incompatible duty assignment: Employee {emp_name} ({emp_id}) assigned to both "
                             f"{pair[0][0]}-{pair[0][1]} and {pair[1][0]}-{pair[1][1]} on {date}."
                         )
 
-        # Hard Constraint: Minimum Process Coverage
+        # 3. Hard Constraint: Missing Mandatory Operational Coverage
         dates = input_data.dates
         if not dates and entries:
             dates = sorted(list({e.date for e in entries}))
@@ -154,36 +178,36 @@ class RosterValidator:
                     operating = is_process_operating(bp.rule, date, holiday_dates, custom_dates)
                     if operating and bp.min_staff > 0:
                         proc_key = (brand.id, bp.process_id, date)
-                        scheduled = proc_date_scheduled.get(proc_key, set())
+                        scheduled = proc_date_scheduled.get(proc_key, [])
                         if len(scheduled) < bp.min_staff:
-                            violations.append(
-                                f"Minimum coverage shortage: Brand {brand.name} ({brand.id}) process "
-                                f"{bp.process_id} on {date} has {len(scheduled)} staff scheduled, but requires {bp.min_staff}."
+                            hard_failures.append(
+                                f"Missing mandatory operational coverage: Brand {brand.name} ({brand.id}) process "
+                                f"{bp.process_id} on {date} has {len(scheduled)} of {bp.min_staff} required staff scheduled."
+                            )
+                        else:
+                            informational.append(
+                                f"Coverage successfully maintained: {brand.id}-{bp.process_id} on {date} "
+                                f"({len(scheduled)}/{bp.min_staff} staff)."
                             )
 
-        # Hard Constraint: Weekly-off Entitlement and Exclusivity
-        # Group dates into 7-day calendar weeks
-        if dates and employee_days:
-            # Check weekly off entitlements per 7-day block
-            # Split dates into weeks of up to 7 days
-            weeks = [dates[i : i + 7] for i in range(0, len(dates), 7)]
+        # 4. Informational Results: Employee States
+        if employee_days:
             for emp in input_data.employees:
                 emp_states = employee_days.get(emp.id, {})
-                for w_idx, week_dates in enumerate(weeks):
-                    if len(week_dates) == 7:
-                        offs = sum(1 for d in week_dates if emp_states.get(d) == "OFF")
-                        min_off = emp.min_weekly_off
-                        max_off = emp.max_weekly_off
-                        if offs < min_off:
-                            violations.append(
-                                f"Weekly-off entitlement underflow: Employee {emp.name} ({emp.id}) has {offs} offs "
-                                f"in week {w_idx + 1}, required minimum is {min_off}."
-                            )
-                        if offs > max_off:
-                            violations.append(
-                                f"Weekly-off entitlement overflow: Employee {emp.name} ({emp.id}) has {offs} offs "
-                                f"in week {w_idx + 1}, maximum allowed is {max_off}."
-                            )
+                for d, state in emp_states.items():
+                    if state == "UNASSIGNED":
+                        informational.append(
+                            f"Available but unassigned: Employee {emp.name} ({emp.id}) available but unassigned on {d}."
+                        )
+                    elif state == "OFF" and get_weekday(d) in emp.weekly_off:
+                        informational.append(
+                            f"Normal weekly-off allocation: Employee {emp.name} ({emp.id}) on weekly off on {d}."
+                        )
 
-        is_valid = len(violations) == 0
-        return is_valid, violations
+        is_valid = len(hard_failures) == 0
+        return ValidationReport(
+            is_valid=is_valid,
+            hard_failures=hard_failures,
+            warnings=warnings,
+            informational=informational,
+        )

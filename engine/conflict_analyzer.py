@@ -47,7 +47,6 @@ class ConflictAnalyzer:
                 procs.append((b.id, bp.process_id, bp.min_staff, bp.rule, set(bp.custom_operating_dates)))
 
         # Precompute operational status G[q, d]
-        # (brand_id, process_id, date) -> bool
         G: Dict[Tuple[str, str, str], bool] = {}
         for brand_id, proc_id, _, rule, c_dates in procs:
             for d in dates:
@@ -58,22 +57,11 @@ class ConflictAnalyzer:
         for a in input_data.allocations:
             alloc_map[(a.employee_id, a.brand_id, a.process_id)] = a.role.lower()
 
-        # Incompatibility map
-        incompat_set: Set[Tuple[Tuple[str, str], Tuple[str, str]]] = set()
-        for ip in input_data.incompatible_pairs:
-            p1 = (ip.brand_id_1, ip.process_id_1)
-            p2 = (ip.brand_id_2, ip.process_id_2)
-            incompat_set.add((p1, p2))
-            incompat_set.add((p2, p1))
-
         # Decision variables
-        # x[e, q, d]
         x: Dict[Tuple[str, str, str, str], cp_model.IntVar] = {}
         w: Dict[Tuple[str, str], cp_model.IntVar] = {}
         o: Dict[Tuple[str, str], cp_model.IntVar] = {}
         n: Dict[Tuple[str, str], cp_model.IntVar] = {}
-
-        # Diagnostic slack variables: s[brand_id, proc_id, date] >= 0
         slack: Dict[Tuple[str, str, str], cp_model.IntVar] = {}
 
         for e in input_data.employees:
@@ -82,10 +70,10 @@ class ConflictAnalyzer:
                 o[(e.id, d)] = model.NewBoolVar(f"o_{e.id}_{d}")
                 n[(e.id, d)] = model.NewBoolVar(f"n_{e.id}_{d}")
 
-                # Unavailability indicator u_ed
+                # Unavailability indicator U_ed (leave, comp-off)
                 u_ed = 1 if (d in e.leaves or d in e.comp_offs) else 0
 
-                # Employee state partition: w_ed + o_ed + n_ed = 1 - u_ed
+                # Employee state partition: w_ed + o_ed + n_ed = 1 - U_ed
                 model.Add(w[(e.id, d)] + o[(e.id, d)] + n[(e.id, d)] == 1 - u_ed)
 
         for brand_id, proc_id, min_staff, _, _ in procs:
@@ -99,17 +87,16 @@ class ConflictAnalyzer:
                 for e in input_data.employees:
                     is_eligible = (e.id, brand_id, proc_id) in alloc_map
                     if is_eligible and is_op:
-                        x[(e.id, brand_id, proc_id, d)] = model.NewBoolVar(f"x_{e.id}_{brand_id}_{proc_id}_{d}")
-                        # Employee availability constraint: x_eqd <= 1 - u_ed
+                        var = model.NewBoolVar(f"x_{e.id}_{brand_id}_{proc_id}_{d}")
+                        x[(e.id, brand_id, proc_id, d)] = var
+
+                        # Employee availability constraint: x_eqd <= 1 - U_ed
                         u_ed = 1 if (d in e.leaves or d in e.comp_offs) else 0
                         if u_ed == 1:
-                            model.Add(x[(e.id, brand_id, proc_id, d)] == 0)
-                        # Working consistency: x_eqd <= w_ed
-                        model.Add(x[(e.id, brand_id, proc_id, d)] <= w[(e.id, d)])
-                    else:
-                        pass
+                            model.Add(var == 0)
 
-        # Working status lower bound: w_ed <= sum_q x_eqd
+        # Exclusive Daily Employee Assignment: sum_q x_eqd <= 1
+        # Working consistency: w_ed = sum_q x_eqd
         for e in input_data.employees:
             for d in dates:
                 emp_x = [
@@ -118,29 +105,10 @@ class ConflictAnalyzer:
                     if (e.id, b_id, p_id, d) in x
                 ]
                 if emp_x:
-                    model.Add(w[(e.id, d)] <= sum(emp_x))
+                    model.Add(sum(emp_x) <= 1)
+                    model.Add(w[(e.id, d)] == sum(emp_x))
                 else:
                     model.Add(w[(e.id, d)] == 0)
-
-        # Weekly-off entitlements per 7-day period
-        weeks = [dates[i : i + 7] for i in range(0, len(dates), 7)]
-        for e in input_data.employees:
-            for week_dates in weeks:
-                if len(week_dates) == 7:
-                    off_vars = [o[(e.id, d)] for d in week_dates]
-                    model.Add(sum(off_vars) >= e.min_weekly_off)
-                    model.Add(sum(off_vars) <= e.max_weekly_off)
-
-        # Incompatible duties constraint
-        for (p1, p2) in incompat_set:
-            b1, pr1 = p1
-            b2, pr2 = p2
-            for e in input_data.employees:
-                for d in dates:
-                    v1 = x.get((e.id, b1, pr1, d))
-                    v2 = x.get((e.id, b2, pr2, d))
-                    if v1 is not None and v2 is not None:
-                        model.Add(v1 + v2 <= 1)
 
         # Relaxed coverage constraint with slack: sum_e x_eqd + s_qd >= M_qd
         for brand_id, proc_id, min_staff, _, _ in procs:
@@ -154,8 +122,22 @@ class ConflictAnalyzer:
                     s_var = slack[(brand_id, proc_id, d)]
                     model.Add(sum(cand_vars) + s_var >= min_staff)
 
-        # Objective: minimize total slack (shortages)
-        slack_terms = [s for s in slack.values() if isinstance(s, cp_model.IntVar)]
+        # Most-constrained priority weights in diagnostic objective
+        slack_terms = []
+        for brand_id, proc_id, min_staff, _, _ in procs:
+            for d in dates:
+                s_var = slack[(brand_id, proc_id, d)]
+                if isinstance(s_var, cp_model.IntVar):
+                    # Compute N_qd
+                    eligible_count = sum(
+                        1 for e in input_data.employees
+                        if (e.id, brand_id, proc_id) in alloc_map
+                        and d not in e.leaves
+                        and d not in e.comp_offs
+                    )
+                    weight = 1000 + (100 - min(100, eligible_count))
+                    slack_terms.append(s_var * weight)
+
         model.Minimize(sum(slack_terms))
 
         solver = cp_model.CpSolver()
@@ -199,42 +181,36 @@ class ConflictAnalyzer:
                     if s_val > 0:
                         status_str = "gap" if len(scheduled_emps) == 0 else "understaffed"
 
-                        # Analyze root cause
                         eligible_primary = [
-                            e
-                            for e in input_data.employees
+                            e for e in input_data.employees
                             if alloc_map.get((e.id, brand_id, proc_id)) == "primary"
                         ]
                         eligible_backup = [
-                            e
-                            for e in input_data.employees
+                            e for e in input_data.employees
                             if alloc_map.get((e.id, brand_id, proc_id)) == "backup"
                         ]
 
                         reasons: List[str] = []
                         for ep in eligible_primary:
                             if d in ep.leaves or d in ep.comp_offs:
-                                reasons.append(f"Primary {ep.name} ({ep.id}) is unavailable (leave/comp-off)")
-                            elif solver.Value(o[(ep.id, d)]) == 1:
-                                reasons.append(f"Primary {ep.name} ({ep.id}) is on weekly off")
+                                reasons.append(f"Primary {ep.name} ({ep.id}) is unavailable on approved leave/comp-off")
+                            elif solver.Value(w[(ep.id, d)]) == 1:
+                                reasons.append(f"Primary {ep.name} ({ep.id}) is assigned to another brand/process")
 
                         if not eligible_backup:
-                            reasons.append("No authorized backup resources are configured for this process")
+                            reasons.append("No authorized backup resource exists for this process")
                         else:
                             for eb in eligible_backup:
                                 if d in eb.leaves or d in eb.comp_offs:
-                                    reasons.append(f"Backup {eb.name} ({eb.id}) is on leave/comp-off")
-                                elif solver.Value(o[(eb.id, d)]) == 1:
-                                    reasons.append(f"Backup {eb.name} ({eb.id}) is on weekly off")
+                                    reasons.append(f"Backup {eb.name} ({eb.id}) is on approved leave/comp-off")
+                                elif solver.Value(w[(eb.id, d)]) == 1:
+                                    reasons.append(f"Backup {eb.name} ({eb.id}) is assigned to another brand/process")
                                 else:
-                                    # Check if backup was blocked by incompatible assignment
-                                    reasons.append(
-                                        f"Backup {eb.name} ({eb.id}) is unavailable or constrained by conflicting assignments"
-                                    )
+                                    reasons.append(f"Backup {eb.name} ({eb.id}) is unavailable or off")
 
                         reason_text = "; ".join(reasons) if reasons else "Insufficient eligible staffing."
                         suggestion = (
-                            f"Authorize additional backup resources for {brand_name} {proc_id}, "
+                            f"Authorize backup coverage for {brand_name} {proc_id}, "
                             f"adjust employee leave dates, or reduce minimum coverage requirement."
                         )
 

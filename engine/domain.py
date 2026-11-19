@@ -470,6 +470,22 @@ class SchedulingInput:
 
 
 @dataclass
+class ValidationReport:
+    is_valid: bool
+    hard_failures: List[str] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    informational: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "is_valid": self.is_valid,
+            "hard_failures": self.hard_failures,
+            "warnings": self.warnings,
+            "informational": self.informational,
+        }
+
+
+@dataclass
 class SchedulingResult:
     status: SolverStatus
     solve_time_seconds: float
@@ -479,6 +495,7 @@ class SchedulingResult:
     stats: RosterStats = field(default_factory=RosterStats)
     diagnostic_explanations: List[str] = field(default_factory=list)
     employee_days: Dict[str, Dict[str, str]] = field(default_factory=dict)  # emp_id -> date -> status
+    validation_report: Optional[ValidationReport] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -490,4 +507,5 @@ class SchedulingResult:
             "stats": self.stats.to_dict(),
             "diagnostic_explanations": self.diagnostic_explanations,
             "employee_days": self.employee_days,
+            "validation_report": self.validation_report.to_dict() if self.validation_report else None,
         }

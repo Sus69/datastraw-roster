@@ -83,8 +83,9 @@ def test_scenario_baseline(base_fixture):
     assert len(result.entries) > 0
 
     # Independently validate hard constraints
-    is_valid, violations = RosterValidator.validate(sched_input, result.entries, result.employee_days)
-    assert is_valid, f"Validation failed with: {violations}"
+    val_report = RosterValidator.validate(sched_input, result.entries, result.employee_days)
+    assert val_report.is_valid, f"Validation failed with: {val_report.hard_failures}"
+    assert len(val_report.hard_failures) == 0
 
 
 def test_scenario_a_successful_replacement(base_fixture):
@@ -111,8 +112,8 @@ def test_scenario_a_successful_replacement(base_fixture):
     assert "E01" not in assigned_emps, "E01 cannot work while on leave"
 
     # Independently validate
-    is_valid, violations = RosterValidator.validate(sched_input, result.entries, result.employee_days)
-    assert is_valid, f"Violations: {violations}"
+    val_report = RosterValidator.validate(sched_input, result.entries, result.employee_days)
+    assert val_report.is_valid, f"Violations: {val_report.hard_failures}"
 
 
 def test_scenario_b_incompatible_backup_assignments(base_fixture):
@@ -182,17 +183,20 @@ def test_scenario_c_no_qualified_replacement(base_fixture):
 # Section 9: Additional Edge Case Tests
 # ============================================================================
 
-def test_single_employee_multiple_compatible_processes(base_fixture):
-    """A single employee handling multiple compatible processes within the same day."""
+def test_exclusive_daily_employee_assignment(base_fixture):
+    """Enforce sum_{q in Q} x_eqd <= 1: employee can work on at most ONE brand/process per day."""
     sched_input = SchedulingInput.from_dict(base_fixture)
     engine = SchedulingEngine(sched_input)
     result = engine.solve()
 
     assert result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE)
-    # Check E01 on Monday (2026-11-23): handles both CS and RET for B01
-    e01_mon = next((e for e in result.entries if e.employee_id == "E01" and e.date == "2026-11-23"), None)
-    assert e01_mon is not None
-    assert set(e01_mon.processes) == {"CS", "RET"}
+    # Check every entry has exactly one process and each employee has <= 1 assignment per date
+    emp_date_counts = {}
+    for entry in result.entries:
+        assert len(entry.processes) == 1, f"Entry has multiple processes: {entry}"
+        key = (entry.employee_id, entry.date)
+        emp_date_counts[key] = emp_date_counts.get(key, 0) + 1
+        assert emp_date_counts[key] <= 1, f"Employee {entry.employee_id} assigned multiple processes on {entry.date}"
 
 
 def test_employee_working_across_multiple_brands(base_fixture):
@@ -350,8 +354,8 @@ def test_changes_to_an_existing_roster(base_fixture):
     )
 
     assert reopt_result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE)
-    # Delta should only contain necessary replacements (E01 removed, E22 and E24 added)
-    assert delta.total_changes == 4
+    # Delta should only contain necessary replacements (E01 removed, E22 added for CS)
+    assert delta.total_changes == 2
     assert delta.stability_ratio > 0.98
 
 
@@ -375,15 +379,16 @@ def test_scheduling_weeks_crossing_month_boundaries(base_fixture):
     result = SchedulingEngine(sched_input).solve()
 
     assert result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE)
-    # Validate weekly off count for each 7-day week
-    week1 = two_weeks_dates[:7]
-    week2 = two_weeks_dates[7:]
+    val_report = RosterValidator.validate(sched_input, result.entries, result.employee_days)
+    assert val_report.is_valid, f"Validation failed: {val_report.hard_failures}"
+    assert len(val_report.hard_failures) == 0
 
+    # Ensure exclusive daily assignment across entire 14-day horizon
     for emp_id, day_map in result.employee_days.items():
-        w1_offs = sum(1 for d in week1 if day_map.get(d) == "OFF")
-        w2_offs = sum(1 for d in week2 if day_map.get(d) == "OFF")
-        assert 1 <= w1_offs <= 2
-        assert 1 <= w2_offs <= 2
+        for d, state in day_map.items():
+            if state == "WORK":
+                emp_entries = [e for e in result.entries if e.employee_id == emp_id and e.date == d]
+                assert len(emp_entries) == 1
 
 
 def test_solver_timeout_and_infeasibility_distinction(base_fixture):
@@ -416,8 +421,9 @@ def test_independent_hard_constraint_validation(base_fixture):
 
     # Valid roster passes
     valid_res = SchedulingEngine(sched_input).solve()
-    is_valid, violations = RosterValidator.validate(sched_input, valid_res.entries, valid_res.employee_days)
-    assert is_valid
+    val_report = RosterValidator.validate(sched_input, valid_res.entries, valid_res.employee_days)
+    assert val_report.is_valid
+    assert len(val_report.hard_failures) == 0
 
     # Corrupted roster with unauthorized assignment fails
     corrupted_entries = copy.deepcopy(valid_res.entries)
@@ -429,9 +435,9 @@ def test_independent_hard_constraint_validation(base_fixture):
             processes=["RET"],
         )
     )
-    is_corrupt_valid, corrupt_violations = RosterValidator.validate(sched_input, corrupted_entries)
-    assert not is_corrupt_valid
-    assert any("Unauthorized assignment" in v for v in corrupt_violations)
+    corrupt_report = RosterValidator.validate(sched_input, corrupted_entries)
+    assert not corrupt_report.is_valid
+    assert any("Unauthorized" in v for v in corrupt_report.hard_failures)
 
 
 def test_workload_and_capacity_constraints(base_fixture):
@@ -464,3 +470,144 @@ def test_workload_and_capacity_constraints(base_fixture):
     sched_input = SchedulingInput.from_dict(data)
     result = SchedulingEngine(sched_input).solve()
     assert result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE)
+
+
+# ============================================================================
+# Section 10: December 2026 Seed Data Scenarios & Business Rules
+# ============================================================================
+
+@pytest.fixture
+def december_fixture():
+    seed_path = os.path.join(parent_dir, "src", "data", "seed_data.json")
+    with open(seed_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def test_december_scenario_a_glowkart_retention(december_fixture):
+    """Scenario A: Aarav Mehta (e01) is on approved leave from 8-10 December 2026.
+    GlowKart Retention process has no backup resource.
+    Expected result:
+    - Aarav must not be scheduled.
+    - Retention must be flagged as uncovered.
+    - The engine must report the exact affected dates (2026-12-08, 2026-12-09, 2026-12-10).
+    - The coverage shortage must not be silently ignored.
+    """
+    sched_input = SchedulingInput.from_dict(december_fixture)
+    result = SchedulingEngine(sched_input).solve()
+
+    assert result.status == SolverStatus.INFEASIBLE
+
+    # 1. Aarav must not be scheduled during approved leave
+    leave_dates = {"2026-12-08", "2026-12-09", "2026-12-10"}
+    for cov in result.coverage:
+        if cov.date in leave_dates:
+            assert "e01" not in cov.scheduled, f"Aarav scheduled on leave date {cov.date}"
+
+    # 2. Retention must be flagged as uncovered on exact dates
+    ret_shortages = [
+        c for c in result.conflicts
+        if c.brand_id == "b01" and c.process_id == "RET" and c.date in leave_dates
+    ]
+    reported_dates = {c.date for c in ret_shortages}
+    assert reported_dates == leave_dates, f"Expected shortages on {leave_dates}, got {reported_dates}"
+    for c in ret_shortages:
+        assert c.type == "COVERAGE_GAP"
+        assert c.diagnostic_shortage == 1
+        assert "Aarav Mehta" in c.message
+        assert "leave" in c.message
+
+
+def test_december_scenario_b_bookbarn(december_fixture):
+    """Scenario B: Both employees assigned to BookBarn (e27, e28) are on approved leave on 21 Dec 2026.
+    Expected result:
+    - Neither employee may be scheduled.
+    - BookBarn must be flagged as uncovered.
+    - The engine must report the affected process and date (2026-12-21, CS and RET).
+    """
+    sched_input = SchedulingInput.from_dict(december_fixture)
+    result = SchedulingEngine(sched_input).solve()
+
+    assert result.status == SolverStatus.INFEASIBLE
+
+    # Neither employee scheduled on 2026-12-21
+    for cov in result.coverage:
+        if cov.date == "2026-12-21":
+            assert "e27" not in cov.scheduled, "e27 scheduled during approved leave"
+            assert "e28" not in cov.scheduled, "e28 scheduled during approved leave"
+
+    # Both CS and RET reported as uncovered on 2026-12-21
+    bb_shortages = [
+        c for c in result.conflicts
+        if c.brand_id == "b11" and c.date == "2026-12-21"
+    ]
+    assert len(bb_shortages) == 2, f"Expected 2 shortages for BookBarn on 2026-12-21, got {len(bb_shortages)}"
+    procs = {c.process_id for c in bb_shortages}
+    assert procs == {"CS", "RET"}
+
+
+def test_december_scenario_c_weekly_off_overrides(december_fixture):
+    """Scenario C: Single-resource brands require operational coverage on employees' preferred weekly offs.
+    Expected result:
+    - Required coverage takes priority.
+    - The employee can be scheduled.
+    - A weekly-off override warning must be generated.
+    - Roster must not incorrectly classify this as a hard-constraint violation.
+    """
+    sched_input = SchedulingInput.from_dict(december_fixture)
+    result = SchedulingEngine(sched_input).solve()
+
+    # Look for OFF_OVERRIDDEN warnings in conflicts
+    off_warnings = [c for c in result.conflicts if c.type == "OFF_OVERRIDDEN"]
+    assert len(off_warnings) > 0, "Expected weekly-off override warnings"
+
+    # Verify each off override is flagged as warning, NOT hard error
+    for w in off_warnings:
+        assert w.severity == "warning"
+        assert "preferred weekly off" in w.message.lower() or "preferred" in w.message.lower()
+
+
+def test_december_exclusive_daily_assignment_rule():
+    """Verify exclusive daily assignment sum_{q in Q} x_eqd <= 1 across all roster solutions."""
+    # Build a clean sub-horizon from December seed data with no leave clashes to verify feasible solution
+    seed_path = os.path.join(parent_dir, "src", "data", "seed_data.json")
+    with open(seed_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    # First 5 days of December (2026-12-01 to 2026-12-05) without leaves
+    data["dates"] = ["2026-12-01", "2026-12-02", "2026-12-03", "2026-12-04", "2026-12-05"]
+    for emp in data["employees"]:
+        emp_leaves = emp.get("leaves", [])
+        emp_comp = emp.get("comp_offs", emp.get("compOffs", []))
+        emp["leaves"] = [d for d in emp_leaves if d not in data["dates"]]
+        emp["compOffs"] = [d for d in emp_comp if d not in data["dates"]]
+        emp["comp_offs"] = [d for d in emp_comp if d not in data["dates"]]
+
+    # Ensure secondary backup is authorized for TechTrove CS to meet min_staff=2
+    data["allocations"].append({"employee_id": "e15", "brand_id": "b04", "process_id": "CS", "role": "secondary"})
+
+    sched_input = SchedulingInput.from_dict(data)
+    result = SchedulingEngine(sched_input).solve()
+
+    if result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE):
+        emp_date_counts = {}
+        for entry in result.entries:
+            assert len(entry.processes) == 1, f"Multiple processes in single entry: {entry}"
+            key = (entry.employee_id, entry.date)
+            emp_date_counts[key] = emp_date_counts.get(key, 0) + 1
+            assert emp_date_counts[key] <= 1, f"Employee {entry.employee_id} assigned multiple processes on {entry.date}"
+
+
+def test_december_validation_report_categories(december_fixture):
+    """Categorized validation report separates hard_failures, warnings, and informational."""
+    sched_input = SchedulingInput.from_dict(december_fixture)
+    result = SchedulingEngine(sched_input).solve()
+
+    assert result.validation_report is not None
+    rep = result.validation_report
+    assert isinstance(rep.hard_failures, list)
+    assert isinstance(rep.warnings, list)
+    assert isinstance(rep.informational, list)
+    assert len(rep.hard_failures) > 0, "Hard failures should contain coverage gap errors"
+    assert len(rep.warnings) > 0, "Warnings should contain weekly-off overrides"
+    assert len(rep.informational) > 0, "Informational should contain covered slots"
+

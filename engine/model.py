@@ -380,6 +380,36 @@ class SchedulingEngine:
         """Analyze and report infeasibility with diagnostic slack model."""
         diag_conflicts, diag_coverage, diag_explanations = ConflictAnalyzer.diagnose_infeasibility(self.input_data)
         elapsed = time.perf_counter() - start_time
+
+        op_slots = sum(1 for c in diag_coverage if c.operating)
+        cov_slots = sum(1 for c in diag_coverage if c.status == "covered")
+        gap_slots = sum(1 for c in diag_coverage if c.status == "gap")
+        under_slots = sum(1 for c in diag_coverage if c.status == "understaffed")
+        err_cnt = sum(1 for c in diag_conflicts if c.severity == "error")
+        warn_cnt = sum(1 for c in diag_conflicts if c.severity == "warning")
+        cov_pct = round((cov_slots / op_slots * 100), 1) if op_slots > 0 else 100.0
+        emps_working = len({emp_id for c in diag_coverage for emp_id in c.scheduled})
+
+        # Build employee_days for diagnostic tracking
+        diag_employee_days: Dict[str, Dict[str, str]] = {}
+        for e in self.input_data.employees:
+            emp_days: Dict[str, str] = {}
+            for d in self.dates:
+                if d in e.leaves:
+                    emp_days[d] = "LEAVE"
+                elif d in e.comp_offs:
+                    emp_days[d] = "COMP_OFF"
+                else:
+                    emp_days[d] = "UNASSIGNED"
+            diag_employee_days[e.id] = emp_days
+
+        val_report = ValidationReport(
+            is_valid=False,
+            hard_failures=[c.message for c in diag_conflicts if c.severity == "error"],
+            warnings=[c.message for c in diag_conflicts if c.severity == "warning"],
+            informational=[f"Operational slot {c.brand_id}-{c.process_id} on {c.date}: {c.status}" for c in diag_coverage if c.status == "covered"],
+        )
+
         return SchedulingResult(
             status=SolverStatus.INFEASIBLE,
             solve_time_seconds=elapsed,
@@ -387,16 +417,18 @@ class SchedulingEngine:
             coverage=diag_coverage,
             conflicts=diag_conflicts,
             stats=RosterStats(
-                operating_slots=sum(1 for c in diag_coverage if c.operating),
-                covered_slots=sum(1 for c in diag_coverage if c.status == "covered"),
-                gap_slots=sum(1 for c in diag_coverage if c.status == "gap"),
-                understaffed_slots=sum(1 for c in diag_coverage if c.status == "understaffed"),
-                errors=len(diag_conflicts),
-                warnings=0,
-                coverage_pct=0.0,
-                employees_working=0,
+                operating_slots=op_slots,
+                covered_slots=cov_slots,
+                gap_slots=gap_slots,
+                understaffed_slots=under_slots,
+                errors=err_cnt,
+                warnings=warn_cnt,
+                coverage_pct=cov_pct,
+                employees_working=emps_working,
             ),
             diagnostic_explanations=diag_explanations,
+            employee_days=diag_employee_days,
+            validation_report=val_report,
         )
 
     def _extract_solution(

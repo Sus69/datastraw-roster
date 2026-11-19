@@ -584,7 +584,7 @@ export async function generateRosterCPSAT(
 
     const json = await res.json();
     if (res.status === 200 || res.status === 422) {
-      const entries: RosterEntry[] = (json.entries || []).map((e: any) => ({
+      let entries: RosterEntry[] = (json.entries || []).map((e: any) => ({
         date: e.date,
         employeeId: e.employee_id,
         brandId: e.brand_id,
@@ -603,6 +603,41 @@ export async function generateRosterCPSAT(
         status: c.status,
       }));
 
+      // When solver provides diagnostic schedule on infeasible constraints, populate entries from coverage
+      if (entries.length === 0 && coverage.length > 0) {
+        const empDateMap = new Map<string, { brandId: string; processes: ProcessId[]; overriddenOff: boolean }>();
+        for (const cov of coverage) {
+          if (cov.operating && cov.scheduled) {
+            for (const empId of cov.scheduled) {
+              const key = `${empId}|${cov.date}`;
+              const existing = empDateMap.get(key);
+              if (existing) {
+                if (!existing.processes.includes(cov.processId)) {
+                  existing.processes.push(cov.processId);
+                }
+              } else {
+                const emp = data.employees.find((e) => e.id === empId);
+                empDateMap.set(key, {
+                  brandId: cov.brandId,
+                  processes: [cov.processId],
+                  overriddenOff: emp ? isWeeklyOff(emp, cov.date) : false,
+                });
+              }
+            }
+          }
+        }
+        for (const [key, val] of empDateMap.entries()) {
+          const [employeeId, date] = key.split('|');
+          entries.push({
+            date,
+            employeeId,
+            brandId: val.brandId,
+            processes: val.processes,
+            overriddenOff: val.overriddenOff,
+          });
+        }
+      }
+
       const conflicts: Conflict[] = (json.conflicts || []).map((cf: any) => ({
         id: cf.id,
         type: cf.type,
@@ -615,15 +650,19 @@ export async function generateRosterCPSAT(
         suggestion: cf.suggestion,
       }));
 
+      const opSlots = json.stats?.operating_slots || 0;
+      const covSlots = json.stats?.covered_slots || 0;
+      const calcPct = opSlots > 0 ? Math.round((covSlots / opSlots) * 100) : 100;
+
       const stats: RosterStats = {
-        operatingSlots: json.stats?.operating_slots || 0,
-        coveredSlots: json.stats?.covered_slots || 0,
+        operatingSlots: opSlots,
+        coveredSlots: covSlots,
         gapSlots: json.stats?.gap_slots || 0,
         understaffedSlots: json.stats?.understaffed_slots || 0,
         warnings: json.stats?.warnings || 0,
         errors: json.stats?.errors || 0,
-        coveragePct: json.stats?.coverage_pct || 0,
-        employeesWorking: json.stats?.employees_working || 0,
+        coveragePct: json.stats?.coverage_pct && json.stats?.coverage_pct > 0 ? json.stats.coverage_pct : calcPct,
+        employeesWorking: json.stats?.employees_working && json.stats?.employees_working > 0 ? json.stats.employees_working : new Set(entries.map((e) => e.employeeId)).size,
       };
 
       return {

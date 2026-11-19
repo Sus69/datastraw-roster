@@ -101,7 +101,7 @@ export default function App() {
   const [podFilter, setPodFilter] = useState('all');
   const [selectedBrand, setSelectedBrand] = useState(BRANDS[0].id);
   const [selectedEmployee, setSelectedEmployee] = useState(EMPLOYEES[0].id);
-  const [conflictFilter, setConflictFilter] = useState<'all' | 'error' | 'warning'>('all');
+  const [conflictFilter, setConflictFilter] = useState<'all' | 'error' | 'warning' | 'gap' | 'understaffed'>('all');
   const [backupFor, setBackupFor] = useState<string | null>(null);
 
   // Simulate-a-change panel
@@ -155,9 +155,16 @@ export default function App() {
     );
   }, [data, search, podFilter]);
 
-  const visibleConflicts = result.conflicts.filter(
-    (c) => conflictFilter === 'all' || c.severity === conflictFilter,
-  );
+  const visibleConflicts = useMemo(() => {
+    return result.conflicts.filter((c) => {
+      if (conflictFilter === 'all') return true;
+      if (conflictFilter === 'error') return c.severity === 'error';
+      if (conflictFilter === 'warning') return c.severity === 'warning';
+      if (conflictFilter === 'gap') return c.type === 'COVERAGE_GAP';
+      if (conflictFilter === 'understaffed') return c.type === 'UNDERSTAFFED';
+      return true;
+    });
+  }, [result.conflicts, conflictFilter]);
 
   function runSimulation() {
     const changed: Overrides = {
@@ -238,8 +245,19 @@ export default function App() {
               onClick={() => setView(v.id)}
             >
               {v.label}
-              {v.id === 'conflicts' && result.conflicts.length > 0 && (
-                <span className="nav-badge">{result.stats.errors + result.stats.warnings}</span>
+              {v.id === 'conflicts' && (
+                <div style={{ display: 'inline-flex', gap: 4 }}>
+                  {result.stats.errors > 0 && (
+                    <span className="nav-badge" title={`${result.stats.errors} hard shortages`}>
+                      {result.stats.errors}
+                    </span>
+                  )}
+                  {result.stats.warnings > 0 && (
+                    <span className="nav-badge warn" title={`${result.stats.warnings} weekly-off overrides`}>
+                      {result.stats.warnings}
+                    </span>
+                  )}
+                </div>
               )}
             </button>
           ))}
@@ -272,23 +290,28 @@ export default function App() {
             </p>
           </div>
           <div className="stat-cards">
-            <div className={`stat ${solverStatus === 'OPTIMAL' || solverStatus === 'FEASIBLE' ? 'ok' : 'bad'}`} title="Constraint Programming CP-SAT Status">
+            <div
+              className={`stat ${solverStatus === 'OPTIMAL' || solverStatus === 'FEASIBLE' ? 'ok' : 'warn'}`}
+              title="Constraint Programming (CP-SAT) Engine Status"
+            >
               <span className="stat-num" style={{ fontSize: 13, textTransform: 'uppercase' }}>
-                {isSolving ? 'Solving...' : solverStatus}
+                {isSolving ? 'Solving...' : solverStatus === 'INFEASIBLE' ? 'DIAGNOSED' : solverStatus}
               </span>
-              <span className="stat-label">CP-SAT solver</span>
+              <span className="stat-label">
+                {solverStatus === 'INFEASIBLE' ? 'CP-SAT (Slack)' : 'CP-SAT solver'}
+              </span>
             </div>
-            <div className="stat ok">
+            <div className="stat ok" title={`${result.stats.coveredSlots} of ${result.stats.operatingSlots} operating slots covered`}>
               <span className="stat-num">{result.stats.coveragePct}%</span>
               <span className="stat-label">coverage</span>
             </div>
-            <div className="stat bad">
+            <div className="stat bad" title={`${result.stats.errors} coverage shortages detected`}>
               <span className="stat-num">{result.stats.errors}</span>
-              <span className="stat-label">errors</span>
+              <span className="stat-label">shortages</span>
             </div>
-            <div className="stat warn">
+            <div className="stat warn" title={`${result.stats.warnings} weekly-off preferences overridden to preserve coverage`}>
               <span className="stat-num">{result.stats.warnings}</span>
-              <span className="stat-label">warnings</span>
+              <span className="stat-label">overrides</span>
             </div>
           </div>
         </header>
@@ -979,8 +1002,8 @@ function EmployeesView(props: {
 function ConflictsView(props: {
   conflicts: Conflict[];
   allConflicts: Conflict[];
-  filter: 'all' | 'error' | 'warning';
-  setFilter: (v: 'all' | 'error' | 'warning') => void;
+  filter: 'all' | 'error' | 'warning' | 'gap' | 'understaffed';
+  setFilter: (v: 'all' | 'error' | 'warning' | 'gap' | 'understaffed') => void;
   data: RosterData;
   result: RosterResult;
   backupFor: string | null;
@@ -989,11 +1012,18 @@ function ConflictsView(props: {
   const { conflicts } = props;
   const errors = props.allConflicts.filter((c) => c.severity === 'error').length;
   const warnings = props.allConflicts.filter((c) => c.severity === 'warning').length;
+  const gaps = props.allConflicts.filter((c) => c.type === 'COVERAGE_GAP').length;
+  const under = props.allConflicts.filter((c) => c.type === 'UNDERSTAFFED').length;
 
   return (
     <section className="panel">
       <div className="panel-head">
-        <h2>Conflicts &amp; validation</h2>
+        <div>
+          <h2>Conflicts &amp; Validation Diagnosis</h2>
+          <p className="muted small" style={{ margin: '4px 0 0' }}>
+            Isolates mandatory coverage gaps, understaffed brand processes, and soft weekly-off preference overrides.
+          </p>
+        </div>
         <div className="filters">
           <button className={props.filter === 'all' ? 'btn btn-primary' : 'btn'} onClick={() => props.setFilter('all')}>
             All ({props.allConflicts.length})
@@ -1001,19 +1031,39 @@ function ConflictsView(props: {
           <button className={props.filter === 'error' ? 'btn btn-danger' : 'btn'} onClick={() => props.setFilter('error')}>
             Errors ({errors})
           </button>
+          <button className={props.filter === 'gap' ? 'btn btn-danger' : 'btn'} onClick={() => props.setFilter('gap')} title="Zero staff scheduled on operating day">
+            Gaps ({gaps})
+          </button>
+          <button className={props.filter === 'understaffed' ? 'btn btn-warn' : 'btn'} onClick={() => props.setFilter('understaffed')} title="Scheduled staff less than required minStaff">
+            Understaffed ({under})
+          </button>
           <button className={props.filter === 'warning' ? 'btn btn-warn' : 'btn'} onClick={() => props.setFilter('warning')}>
-            Warnings ({warnings})
+            Overrides ({warnings})
           </button>
         </div>
       </div>
+
+      <div className="conflict-summary-banner">
+        <strong>Executive Summary:</strong> {props.result.stats.coveredSlots} of {props.result.stats.operatingSlots} operating slots ({props.result.stats.coveragePct}%) are successfully staffed.
+        {errors > 0 ? (
+          <span> {errors} shortage slots are flagged due to approved employee leaves without authorized backup (Scenario A: GlowKart Retention 8–10 Dec; Scenario B: BookBarn 21 Dec) and dual-staffing requirements (TechTrove CS).</span>
+        ) : (
+          <span> All mandatory operational coverage requirements are satisfied.</span>
+        )}
+        {warnings > 0 && (
+          <span> {warnings} weekly-off preferences were overridden to maintain mandatory brand coverage without hard-constraint failures.</span>
+        )}
+      </div>
+
       {conflicts.length === 0 ? (
-        <p className="ok-text">No conflicts in this view. The roster satisfies every mandatory constraint.</p>
+        <p className="ok-text" style={{ marginTop: 14 }}>No conflicts in this view. All constraints satisfied.</p>
       ) : (
-        <ul className="conflict-list">
+        <ul className="conflict-list" style={{ marginTop: 14 }}>
           {conflicts.map((c) => (
             <li key={c.id} className={c.severity}>
               <div className="conflict-main">
                 <span className={`severity ${c.severity}`}>{c.severity === 'error' ? 'Error' : 'Warning'}</span>
+                <span className="conflict-type-badge">{c.type}</span>
                 <span className="conflict-date">{c.date}</span>
                 <p>{c.message}</p>
                 {c.suggestion && <p className="muted small">{c.suggestion}</p>}

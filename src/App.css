@@ -60,6 +60,9 @@ body {
   min-width: 20px; height: 20px; border-radius: 10px;
   display: inline-flex; align-items: center; justify-content: center; padding: 0 6px;
 }
+.nav-badge.warn {
+  background: #d97706;
+}
 
 .side-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
 .side-note { font-size: 12px; line-height: 1.5; color: #9ca3af; margin-top: auto; }
@@ -192,6 +195,31 @@ table { border-collapse: collapse; }
 .sim-row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
 .sim-row label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #4b5563; }
 .sim-result { margin-top: 14px; padding-top: 12px; border-top: 1px solid #e5e7eb; }
+
+.conflict-summary-banner {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #2563eb;
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #334155;
+}
+
+.conflict-type-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #475569;
+  background: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
 
 .conflict-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .conflict-list li {

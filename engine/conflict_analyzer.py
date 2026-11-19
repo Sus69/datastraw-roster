@@ -248,4 +248,27 @@ class ConflictAnalyzer:
                         )
                     )
 
+            # Record weekly-off override warnings from diagnostic solve
+            for brand_id, proc_id, _, _, _ in procs:
+                brand = brand_map.get(brand_id)
+                brand_name = brand.name if brand else brand_id
+                for d in dates:
+                    for e in input_data.employees:
+                        if (e.id, brand_id, proc_id, d) in x and solver.Value(x[(e.id, brand_id, proc_id, d)]) == 1:
+                            wd = get_weekday(d)
+                            if wd in e.weekly_off:
+                                conflicts.append(
+                                    Conflict(
+                                        id=f"off-{d}-{e.id}-{brand_id}",
+                                        type="OFF_OVERRIDDEN",
+                                        severity="warning",
+                                        date=d,
+                                        brand_id=brand_id,
+                                        process_id=proc_id,
+                                        employee_id=e.id,
+                                        message=f"{e.name} ({e.id}) worked on preferred weekly off to cover {brand_name} ({proc_id}).",
+                                        suggestion="Client operational coverage took precedence over preferred weekly off.",
+                                    )
+                                )
+
         return conflicts, coverage_list, explanations

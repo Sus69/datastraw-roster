@@ -69,8 +69,11 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: hidden;
   font-family: var(--font-sans);
   font-size: 13px;
   line-height: 1.45;
@@ -645,6 +648,14 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
 /* --------------------------------------------------------------------------
    Tables (Ledger Table, Dense & Ruled)
    -------------------------------------------------------------------------- */
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: var(--space-3);
+}
+
 .ledger-table, .mini-table {
   width: 100%;
   table-layout: auto;
@@ -1233,29 +1244,80 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
 @media (max-width: 900px) {
   .app {
     flex-direction: column;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: hidden;
   }
   .sidebar {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     height: auto;
     position: static;
     padding: var(--space-3);
+    box-sizing: border-box;
+    overflow-x: hidden;
   }
   .nav {
     flex-direction: row;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     gap: 4px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding-bottom: 4px;
   }
   .nav-btn {
     white-space: nowrap;
-    padding: 6px 8px;
+    padding: 6px 10px;
+    flex-shrink: 0;
   }
   .side-actions {
     flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
   }
   .side-note {
     display: none;
   }
   .content {
     padding: var(--space-3);
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+}
+
+@media (max-width: 640px) {
+  .ledger-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 0;
+  }
+  .ledger-row-left {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .ledger-row-right {
+    width: 100%;
+    justify-content: space-between;
+    padding-left: 14px;
+    box-sizing: border-box;
+  }
+  .text-toggle-row {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .modal-backdrop {
+    padding: var(--space-2);
+  }
+  .inspector-modal {
+    max-height: 94vh;
+  }
+  .month-map-card {
+    padding: 12px;
   }
 }

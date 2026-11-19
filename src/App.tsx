@@ -728,26 +728,26 @@ function SimulateSection(props: {
       <div className="simulate-flat-grid">
         <div className="sim-form-col">
           <div className="sim-field-row">
-            <label className="sim-field">
+            <label className="sim-field" style={{ flex: 1, minWidth: 140 }}>
               <span>Employee</span>
               <select
                 className="styled-select"
                 value={props.simEmp}
                 onChange={(e) => props.setSimEmp(e.target.value)}
-                style={{ width: 180 }}
+                style={{ width: '100%' }}
               >
                 {props.data.employees.map((e) => (
                   <option key={e.id} value={e.id}>{e.name}</option>
                 ))}
               </select>
             </label>
-            <label className="sim-field">
+            <label className="sim-field" style={{ flex: 1, minWidth: 120 }}>
               <span>Unavailable date</span>
               <select
                 className="styled-select"
                 value={props.simDate}
                 onChange={(e) => props.setSimDate(e.target.value)}
-                style={{ width: 140 }}
+                style={{ width: '100%' }}
               >
                 {props.result.days.map((d) => (
                   <option key={d} value={d}>{formatLedgerDate(d)}</option>
@@ -1500,7 +1500,8 @@ function PodsView(props: { result: RosterResult; data: RosterData }) {
 
   return (
     <div className="ledger-section">
-      <table className="ledger-table">
+      <div className="table-wrap">
+        <table className="ledger-table">
         <thead>
           <tr>
             <th>Employee</th>
@@ -1547,7 +1548,8 @@ function PodsView(props: { result: RosterResult; data: RosterData }) {
             );
           })}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }
@@ -1572,13 +1574,13 @@ function BrandsView(props: {
 
   return (
     <div className="ledger-section">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <select
             className="styled-select"
             value={brand.id}
             onChange={(e) => props.setSelectedBrand(e.target.value)}
-            style={{ width: 240 }}
+            style={{ minWidth: 200, maxWidth: '100%' }}
           >
             {data.brands.map((b) => (
               <option key={b.id} value={b.id}>{b.name} — {b.category}</option>
@@ -1665,7 +1667,8 @@ function BrandsView(props: {
       </div>
 
       <h2 className="ledger-section-title">Staff allocations for {brand.name}</h2>
-      <table className="ledger-table">
+      <div className="table-wrap">
+        <table className="ledger-table">
         <thead>
           <tr><th>Employee</th><th>Process</th><th>Role</th><th>Pod</th></tr>
         </thead>
@@ -1684,7 +1687,8 @@ function BrandsView(props: {
               );
             })}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }
@@ -1696,7 +1700,8 @@ function ProcessesView(props: { result: RosterResult; data: RosterData }) {
   const { result, data } = props;
   return (
     <div className="ledger-section">
-      <table className="ledger-table" style={{ width: '100%', tableLayout: 'auto' }}>
+      <div className="table-wrap">
+        <table className="ledger-table" style={{ width: '100%', tableLayout: 'auto' }}>
         <thead>
           <tr>
             <th>Process</th>
@@ -1728,7 +1733,8 @@ function ProcessesView(props: { result: RosterResult; data: RosterData }) {
             );
           })}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }
@@ -1755,20 +1761,20 @@ function EmployeesView(props: {
 
   return (
     <div className="ledger-section">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <input
           type="search"
           className="search-input"
           placeholder="Search staff…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ width: 200 }}
+          style={{ width: 180, maxWidth: '100%' }}
         />
         <select
           className="styled-select"
           value={podFilter}
           onChange={(e) => setPodFilter(e.target.value)}
-          style={{ width: 140 }}
+          style={{ width: 140, maxWidth: '100%' }}
         >
           <option value="all">All pods</option>
           {PODS.map((pod) => (
@@ -1780,7 +1786,8 @@ function EmployeesView(props: {
         </span>
       </div>
 
-      <table className="ledger-table">
+      <div className="table-wrap">
+        <table className="ledger-table">
         <thead>
           <tr>
             <th>Employee</th>
@@ -1857,7 +1864,8 @@ function EmployeesView(props: {
             );
           })}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

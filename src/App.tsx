@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ALLOCATIONS,
   BRANDS,
@@ -21,6 +21,7 @@ import {
   rosterToCsv,
 } from './lib/engine';
 import type { BackupCandidate, Conflict, RosterData, RosterResult } from './lib/engine';
+import { MonthMap } from './components/MonthMap';
 import './App.css';
 
 // ---------------------------------------------------------------------------
@@ -163,7 +164,9 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    setIsSolving(true);
+    queueMicrotask(() => {
+      if (!cancelled) setIsSolving(true);
+    });
     generateRosterCPSAT(data, year, month).then((res) => {
       if (!cancelled) {
         setResult(res);
@@ -623,7 +626,7 @@ function AttentionNeededStrip(props: AttentionStripProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Overview: Attention Strip + Simulate Panel + Roster Grid + Coverage Footer
+// Overview: Attention Strip + Simulate Panel + (MonthMap | Detail Grid)
 // ---------------------------------------------------------------------------
 
 interface OverviewProps {
@@ -655,6 +658,45 @@ function OverviewView(p: OverviewProps) {
   const { result, data } = p;
   const brandById = new Map(data.brands.map((b) => [b.id, b]));
   const isCompact = p.density === 'compact';
+
+  // Feature 2: View toggle in Overview header ("Map | Detail")
+  const [overviewMode, setOverviewMode] = useState<'map' | 'detail'>('map');
+
+  // Feature 3: Pod collapsing in Detail Grid
+  const [collapsedPods, setCollapsedPods] = useState<Record<string, boolean>>({});
+
+  function togglePod(podId: string) {
+    setCollapsedPods((prev) => ({ ...prev, [podId]: !prev[podId] }));
+  }
+
+  function expandAllPods() {
+    setCollapsedPods({});
+  }
+
+  function collapseAllPods() {
+    const all: Record<string, boolean> = {};
+    for (const pod of PODS) all[pod.id] = true;
+    setCollapsedPods(all);
+  }
+
+  // Feature 1: Clicking MonthMap cell lands on matching cell in Detail Grid
+  function handleMapSelectCell(employeeId: string, date: string) {
+    setOverviewMode('detail');
+    const emp = data.employees.find((e) => e.id === employeeId);
+    if (emp) {
+      setCollapsedPods((prev) => ({ ...prev, [emp.podId]: false }));
+    }
+    setTimeout(() => {
+      const targetCell = document.getElementById(`detail-cell-${employeeId}-${date}`);
+      if (targetCell) {
+        targetCell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+        targetCell.classList.add('cell-pulse-target');
+        setTimeout(() => {
+          targetCell.classList.remove('cell-pulse-target');
+        }, 2500);
+      }
+    }, 60);
+  }
 
   return (
     <div>
@@ -729,233 +771,371 @@ function OverviewView(p: OverviewProps) {
         )}
       </section>
 
-      {/* Monthly Roster Grid with Sticky Headers and Coverage Strip */}
+      {/* Monthly Roster Section */}
       <section className="panel">
         <div className="panel-head">
           <div>
             <h2>Monthly roster</h2>
-            <span className="muted">Click any cell or coverage dot to inspect, adjust leave, or assign backup cover.</span>
+            <span className="muted">
+              {overviewMode === 'map'
+                ? 'Full-month bird’s-eye view. Click any cell to jump to the matching shift in the detail grid.'
+                : 'Detailed roster grid. Click pod headers to expand or collapse team rows.'}
+            </span>
           </div>
           <div className="filters">
-            {/* Item 9: Density Toggle */}
-            <div className="density-toggle">
-              <span className="density-label">Grid:</span>
+            {/* Feature 2: View toggle ("Map | Detail") */}
+            <div className="view-mode-toggle" title="Switch between bird’s-eye MonthMap and interactive Detail Grid">
               <button
                 type="button"
-                className={`btn-density ${isCompact ? 'active' : ''}`}
-                onClick={() => p.setDensity('compact')}
-                title="Compact view fits all 31 days comfortably on laptop screens"
+                className={`btn-mode ${overviewMode === 'map' ? 'active' : ''}`}
+                onClick={() => setOverviewMode('map')}
               >
-                Compact
+                Map
               </button>
               <button
                 type="button"
-                className={`btn-density ${!isCompact ? 'active' : ''}`}
-                onClick={() => p.setDensity('comfortable')}
-                title="Comfortable view with expanded spacing"
+                className={`btn-mode ${overviewMode === 'detail' ? 'active' : ''}`}
+                onClick={() => setOverviewMode('detail')}
               >
-                Comfortable
+                Detail
               </button>
             </div>
 
-            <input
-              className="search"
-              type="search"
-              placeholder="Search employee…"
-              value={p.search}
-              onChange={(e) => p.setSearch(e.target.value)}
-            />
-            <select value={p.podFilter} onChange={(e) => p.setPodFilter(e.target.value)}>
-              <option value="all">All pods</option>
-              {PODS.map((pod) => (
-                <option key={pod.id} value={pod.id}>{pod.name}</option>
-              ))}
-            </select>
+            {overviewMode === 'detail' && (
+              <>
+                {/* Feature 3: Expand/Collapse All Pods */}
+                <div className="pod-collapse-controls">
+                  <button
+                    type="button"
+                    className="btn btn-small btn-light"
+                    onClick={expandAllPods}
+                    title="Expand all 4 pods to view all 34 employee rows"
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-small btn-light"
+                    onClick={collapseAllPods}
+                    title="Collapse all 4 pods to top-level summary rows"
+                  >
+                    Collapse All
+                  </button>
+                </div>
+
+                {/* Density Toggle */}
+                <div className="density-toggle">
+                  <span className="density-label">Grid:</span>
+                  <button
+                    type="button"
+                    className={`btn-density ${isCompact ? 'active' : ''}`}
+                    onClick={() => p.setDensity('compact')}
+                    title="Compact view fits all 31 days comfortably on laptop screens"
+                  >
+                    Compact
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-density ${!isCompact ? 'active' : ''}`}
+                    onClick={() => p.setDensity('comfortable')}
+                    title="Comfortable view with expanded spacing"
+                  >
+                    Comfortable
+                  </button>
+                </div>
+
+                <input
+                  className="search"
+                  type="search"
+                  placeholder="Search employee…"
+                  value={p.search}
+                  onChange={(e) => p.setSearch(e.target.value)}
+                />
+                <select value={p.podFilter} onChange={(e) => p.setPodFilter(e.target.value)}>
+                  <option value="all">All pods</option>
+                  {PODS.map((pod) => (
+                    <option key={pod.id} value={pod.id}>{pod.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Item 4: Sticky Date Header in Table Scroll Container */}
-        <div className="table-scroll">
-          <table className={`roster-grid ${isCompact ? 'density-compact' : 'density-comfortable'}`}>
-            <thead>
-              <tr>
-                <th className="sticky-col">Employee</th>
-                {result.days.map((d) => {
-                  const dt = new Date(`${d}T12:00:00`);
-                  return (
-                    <th key={d} className={dt.getDay() === 0 ? 'sun' : ''}>
-                      {dt.getDate()}
-                      <span>{WEEKDAYS[dt.getDay()]}</span>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {p.employees.map((emp) => (
-                <tr key={emp.id}>
-                  <td
-                    className="sticky-col emp-cell"
-                    onClick={() => p.onInspectDate(result.days[0], emp.id)}
-                    title={`Click to inspect ${emp.name}`}
-                  >
-                    <span className="emp-name">{emp.name}</span>
-                    <span className="muted">{PODS.find((x) => x.id === emp.podId)?.name}</span>
-                  </td>
-                  {result.days.map((d) => {
-                    const entry = p.entryByKey.get(`${emp.id}|${d}`);
-                    const holiday = isHoliday(d);
+        {/* Conditional Rendering: MonthMap (Layer 1) vs Detail Grid (Layer 2) */}
+        {overviewMode === 'map' ? (
+          <MonthMap
+            data={data}
+            result={result}
+            entryByKey={p.entryByKey}
+            onSelectCell={handleMapSelectCell}
+          />
+        ) : (
+          <>
+            {/* Item 4: Sticky Date Header in Table Scroll Container */}
+            <div className="table-scroll">
+              <table className={`roster-grid ${isCompact ? 'density-compact' : 'density-comfortable'}`}>
+                <thead>
+                  <tr>
+                    <th className="sticky-col">Pod / Employee</th>
+                    {result.days.map((d) => {
+                      const dt = new Date(`${d}T12:00:00`);
+                      return (
+                        <th key={d} className={dt.getDay() === 0 ? 'sun' : ''}>
+                          {dt.getDate()}
+                          <span>{WEEKDAYS[dt.getDay()]}</span>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {PODS.map((pod) => {
+                    if (p.podFilter !== 'all' && p.podFilter !== pod.id) return null;
 
-                    if (entry) {
-                      const brand = brandById.get(entry.brandId);
-                      const procCls = getProcessClass(entry.processes);
-                      const procLabels = entry.processes.map((pid) => processLabel(pid)).join(', ');
-                      return (
-                        <td
-                          key={d}
-                          className={`cell work ${procCls} ${entry.overriddenOff ? 'overridden' : ''}`}
-                          onClick={() => p.onInspectDate(d, emp.id)}
-                          title={`${emp.name} — ${brand?.name ?? ''} (${procLabels})${entry.overriddenOff ? ' — weekly off overridden' : ''} (Click to inspect)`}
-                        >
-                          <span className="cell-brand">{brandShort(brand?.name ?? '', isCompact)}</span>
-                          <span className="cell-procs">{entry.processes.join('·')}</span>
-                          {/* Item 6: Accessible Non-Color Status Marker */}
-                          {entry.overriddenOff && (
-                            <span className="cell-marker warn" title="Weekly off overridden">!</span>
-                          )}
-                        </td>
-                      );
-                    }
-                    if (isHardUnavailable(emp, d)) {
-                      const reason = emp.leaves.includes(d) ? 'Leave' : 'Comp-off';
-                      return (
-                        <td
-                          key={d}
-                          className="cell leave"
-                          onClick={() => p.onInspectDate(d, emp.id)}
-                          title={`${emp.name} — ${reason} (Click to inspect)`}
-                        >
-                          <span className="cell-marker-text">{emp.leaves.includes(d) ? 'L' : 'CO'}</span>
-                        </td>
-                      );
-                    }
-                    if (holiday) {
-                      return (
-                        <td
-                          key={d}
-                          className="cell holiday"
-                          onClick={() => p.onInspectDate(d, emp.id)}
-                          title={`Public Holiday: ${holiday.name} (Click to inspect)`}
-                        >
-                          <span className="cell-marker-text">H</span>
-                        </td>
-                      );
-                    }
-                    if (isWeeklyOff(emp, d)) {
-                      return (
-                        <td
-                          key={d}
-                          className="cell off"
-                          onClick={() => p.onInspectDate(d, emp.id)}
-                          title={`${emp.name} — Preferred Weekly Off (Click to inspect)`}
-                        >
-                          <span className="cell-marker-text off-text">Off</span>
-                        </td>
-                      );
-                    }
-                    {/* Item 8: Idle cells look intentional with centered dot */}
+                    const podEmployees = p.employees.filter((e) => e.podId === pod.id);
+                    if (podEmployees.length === 0) return null;
+
+                    const isCollapsed = Boolean(collapsedPods[pod.id]);
+                    const podBrands = data.brands.filter((b) => b.podId === pod.id);
+
                     return (
-                      <td
-                        key={d}
-                        className="cell idle"
-                        onClick={() => p.onInspectDate(d, emp.id)}
-                        title={`${emp.name} — Not scheduled (Reserve capacity, click to inspect)`}
-                      >
-                        <span className="cell-marker-text idle-dot">·</span>
-                      </td>
+                      <React.Fragment key={pod.id}>
+                        {/* Feature 3: Pod Header Summary Row showing per-day coverage status */}
+                        <tr
+                          className="pod-summary-row"
+                          onClick={() => togglePod(pod.id)}
+                          title={`Click to ${isCollapsed ? 'expand' : 'collapse'} ${pod.name}`}
+                        >
+                          <td className="sticky-col pod-summary-label">
+                            <div className="pod-summary-title">
+                              <span className="pod-toggle-icon">{isCollapsed ? '[+]' : '[-]'}</span>
+                              <strong>{pod.name}</strong>
+                            </div>
+                            <div className="pod-summary-meta">
+                              {podEmployees.length} staff · {isCollapsed ? 'Collapsed (click to expand)' : 'Expanded (click to collapse)'}
+                            </div>
+                          </td>
+                          {result.days.map((d) => {
+                            const podCov = result.coverage.filter(
+                              (c) => podBrands.some((b) => b.id === c.brandId) && c.date === d && c.operating,
+                            );
+                            const podGaps = podCov.filter((c) => c.status === 'gap').length;
+                            const podUnder = podCov.filter((c) => c.status === 'understaffed').length;
+                            const podOver = podCov.filter((c) => c.overriddenOff.length > 0).length;
+                            const podWorkingStaff = result.entries.filter(
+                              (e) => e.date === d && podEmployees.some((emp) => emp.id === e.employeeId),
+                            ).length;
+
+                            let cls = 'pod-ok';
+                            let symbol = '✓';
+                            let tip = `${pod.name} — ${d}: All operating processes covered (${podWorkingStaff} staff active)`;
+
+                            if (podGaps > 0) {
+                              cls = 'pod-gap';
+                              symbol = `×${podGaps}`;
+                              tip = `${pod.name} — ${d}: ${podGaps} process gap(s)`;
+                            } else if (podUnder > 0) {
+                              cls = 'pod-under';
+                              symbol = `!${podUnder}`;
+                              tip = `${pod.name} — ${d}: ${podUnder} understaffed process(es)`;
+                            } else if (podOver > 0) {
+                              cls = 'pod-warn';
+                              symbol = '!';
+                              tip = `${pod.name} — ${d}: Covered with ${podOver} weekly-off override(s)`;
+                            } else if (podCov.length === 0) {
+                              cls = 'pod-closed';
+                              symbol = '–';
+                              tip = `${pod.name} — ${d}: Closed / No operating processes`;
+                            }
+
+                            return (
+                              <td
+                                key={d}
+                                className={`pod-cov-cell ${cls}`}
+                                title={tip}
+                              >
+                                {symbol}
+                              </td>
+                            );
+                          })}
+                        </tr>
+
+                        {/* Individual Employee Rows when not collapsed */}
+                        {!isCollapsed &&
+                          podEmployees.map((emp) => (
+                            <tr key={emp.id} id={`detail-row-${emp.id}`}>
+                              <td
+                                className="sticky-col emp-cell"
+                                onClick={() => p.onInspectDate(result.days[0], emp.id)}
+                                title={`Click to inspect ${emp.name}`}
+                              >
+                                <span className="emp-name">{emp.name}</span>
+                                <span className="muted">{pod.name}</span>
+                              </td>
+                              {result.days.map((d) => {
+                                const entry = p.entryByKey.get(`${emp.id}|${d}`);
+                                const holiday = isHoliday(d);
+                                const cellId = `detail-cell-${emp.id}-${d}`;
+
+                                if (entry) {
+                                  const brand = brandById.get(entry.brandId);
+                                  const procCls = getProcessClass(entry.processes);
+                                  const procLabels = entry.processes.map((pid) => processLabel(pid)).join(', ');
+                                  return (
+                                    <td
+                                      key={d}
+                                      id={cellId}
+                                      className={`cell work ${procCls} ${entry.overriddenOff ? 'overridden' : ''}`}
+                                      onClick={() => p.onInspectDate(d, emp.id)}
+                                      title={`${emp.name} — ${brand?.name ?? ''} (${procLabels})${entry.overriddenOff ? ' — weekly off overridden' : ''} (Click to inspect)`}
+                                    >
+                                      <span className="cell-brand">{brandShort(brand?.name ?? '', isCompact)}</span>
+                                      <span className="cell-procs">{entry.processes.join('·')}</span>
+                                      {entry.overriddenOff && (
+                                        <span className="cell-marker warn" title="Weekly off overridden">!</span>
+                                      )}
+                                    </td>
+                                  );
+                                }
+                                if (isHardUnavailable(emp, d)) {
+                                  const reason = emp.leaves.includes(d) ? 'Leave' : 'Comp-off';
+                                  return (
+                                    <td
+                                      key={d}
+                                      id={cellId}
+                                      className="cell leave"
+                                      onClick={() => p.onInspectDate(d, emp.id)}
+                                      title={`${emp.name} — ${reason} (Click to inspect)`}
+                                    >
+                                      <span className="cell-marker-text">{emp.leaves.includes(d) ? 'L' : 'CO'}</span>
+                                    </td>
+                                  );
+                                }
+                                if (holiday) {
+                                  return (
+                                    <td
+                                      key={d}
+                                      id={cellId}
+                                      className="cell holiday"
+                                      onClick={() => p.onInspectDate(d, emp.id)}
+                                      title={`Public Holiday: ${holiday.name} (Click to inspect)`}
+                                    >
+                                      <span className="cell-marker-text">H</span>
+                                    </td>
+                                  );
+                                }
+                                if (isWeeklyOff(emp, d)) {
+                                  return (
+                                    <td
+                                      key={d}
+                                      id={cellId}
+                                      className="cell off"
+                                      onClick={() => p.onInspectDate(d, emp.id)}
+                                      title={`${emp.name} — Preferred Weekly Off (Click to inspect)`}
+                                    >
+                                      <span className="cell-marker-text off-text">Off</span>
+                                    </td>
+                                  );
+                                }
+                                return (
+                                  <td
+                                    key={d}
+                                    id={cellId}
+                                    className="cell idle"
+                                    onClick={() => p.onInspectDate(d, emp.id)}
+                                    title={`${emp.name} — Not scheduled (Reserve capacity, click to inspect)`}
+                                  >
+                                    <span className="cell-marker-text idle-dot">·</span>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                      </React.Fragment>
                     );
                   })}
-                </tr>
-              ))}
-            </tbody>
+                </tbody>
 
-            {/* Item 2: Daily Coverage Strip Footer Row */}
-            <tfoot>
-              <tr className="coverage-footer-row">
-                <th className="sticky-col coverage-th">
-                  <div className="cov-th-title">Daily Coverage Status</div>
-                  <div className="cov-th-sub">Process staffing health</div>
-                </th>
-                {result.days.map((d) => {
-                  const dayCov = result.coverage.filter((c) => c.date === d && c.operating);
-                  const gaps = dayCov.filter((c) => c.status === 'gap').length;
-                  const under = dayCov.filter((c) => c.status === 'understaffed').length;
-                  const overridden = dayCov.filter((c) => c.overriddenOff.length > 0).length;
+                {/* Item 2: Daily Coverage Strip Footer Row */}
+                <tfoot>
+                  <tr className="coverage-footer-row">
+                    <th className="sticky-col coverage-th">
+                      <div className="cov-th-title">Daily Coverage Status</div>
+                      <div className="cov-th-sub">Process staffing health</div>
+                    </th>
+                    {result.days.map((d) => {
+                      const dayCov = result.coverage.filter((c) => c.date === d && c.operating);
+                      const gaps = dayCov.filter((c) => c.status === 'gap').length;
+                      const under = dayCov.filter((c) => c.status === 'understaffed').length;
+                      const overridden = dayCov.filter((c) => c.overriddenOff.length > 0).length;
 
-                  let cls = 'cov-ok';
-                  let dotCls = 'dot-ok';
-                  let markerText = '✓';
-                  let tip = `${d}: All operating processes fully covered. Click to inspect.`;
+                      let cls = 'cov-ok';
+                      let dotCls = 'dot-ok';
+                      let markerText = '✓';
+                      let tip = `${d}: All operating processes fully covered. Click to inspect.`;
 
-                  if (gaps > 0) {
-                    cls = 'cov-gap';
-                    dotCls = 'dot-gap';
-                    markerText = `×${gaps}`;
-                    tip = `${d}: ${gaps} complete process gap(s). Click to inspect & assign backup.`;
-                  } else if (under > 0) {
-                    cls = 'cov-under';
-                    dotCls = 'dot-under';
-                    markerText = `!${under}`;
-                    tip = `${d}: ${under} understaffed process(es). Click to inspect.`;
-                  } else if (overridden > 0) {
-                    cls = 'cov-warn';
-                    dotCls = 'dot-warn';
-                    markerText = '!';
-                    tip = `${d}: Covered with ${overridden} weekly-off override(s). Click to inspect.`;
-                  }
+                      if (gaps > 0) {
+                        cls = 'cov-gap';
+                        dotCls = 'dot-gap';
+                        markerText = `×${gaps}`;
+                        tip = `${d}: ${gaps} complete process gap(s). Click to inspect & assign backup.`;
+                      } else if (under > 0) {
+                        cls = 'cov-under';
+                        dotCls = 'dot-under';
+                        markerText = `!${under}`;
+                        tip = `${d}: ${under} understaffed process(es). Click to inspect.`;
+                      } else if (overridden > 0) {
+                        cls = 'cov-warn';
+                        dotCls = 'dot-warn';
+                        markerText = '!';
+                        tip = `${d}: Covered with ${overridden} weekly-off override(s). Click to inspect.`;
+                      }
 
-                  return (
-                    <td
-                      key={d}
-                      className={`cell-cov-status ${cls}`}
-                      onClick={() => p.onInspectDate(d)}
-                      title={tip}
-                    >
-                      <span className={`cov-dot ${dotCls}`} />
-                      <span className="cov-marker">{markerText}</span>
-                    </td>
-                  );
-                })}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                      return (
+                        <td
+                          key={d}
+                          className={`cell-cov-status ${cls}`}
+                          onClick={() => p.onInspectDate(d)}
+                          title={tip}
+                        >
+                          <span className={`cov-dot ${dotCls}`} />
+                          <span className="cov-marker">{markerText}</span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
 
-        {/* Item 5: Process Color Tints & Accessible Status Legend */}
-        <div className="grid-legend-container">
-          <div className="legend-group">
-            <span className="legend-heading">Process Color Tints:</span>
-            <span className="lg-item"><span className="lg-box proc-cs" /> CS (Support)</span>
-            <span className="lg-item"><span className="lg-box proc-acc" /> ACC (Order Escalations)</span>
-            <span className="lg-item"><span className="lg-box proc-ret" /> RET (Retention)</span>
-            <span className="lg-item"><span className="lg-box proc-ndr" /> NDR (Non-Delivery)</span>
-            <span className="lg-item"><span className="lg-box proc-multi" /> Multi (Cross-Process)</span>
-          </div>
-          <div className="legend-group">
-            <span className="legend-heading">Cell Markers:</span>
-            <span className="lg-item"><span className="cell-marker warn inline">!</span> Overridden Off</span>
-            <span className="lg-item"><span className="lg-box leave" /> L: Leave / CO: Comp-off</span>
-            <span className="lg-item"><span className="lg-box holiday" /> H: Public Holiday</span>
-            <span className="lg-item"><span className="lg-box off" /> Off: Weekly Off</span>
-            <span className="lg-item"><span className="lg-box idle" /> · : Reserve Capacity</span>
-          </div>
-          <div className="legend-group">
-            <span className="legend-heading">Coverage Strip:</span>
-            <span className="lg-item"><span className="cov-dot dot-ok inline" /> ✓ All Covered</span>
-            <span className="lg-item"><span className="cov-dot dot-under inline" /> ! Understaffed</span>
-            <span className="lg-item"><span className="cov-dot dot-gap inline" /> × Service Gap</span>
-          </div>
-        </div>
+            {/* Item 5: Process Color Tints & Accessible Status Legend */}
+            <div className="grid-legend-container">
+              <div className="legend-group">
+                <span className="legend-heading">Process Color Tints:</span>
+                <span className="lg-item"><span className="lg-box proc-cs" /> CS (Support)</span>
+                <span className="lg-item"><span className="lg-box proc-acc" /> ACC (Order Escalations)</span>
+                <span className="lg-item"><span className="lg-box proc-ret" /> RET (Retention)</span>
+                <span className="lg-item"><span className="lg-box proc-ndr" /> NDR (Non-Delivery)</span>
+                <span className="lg-item"><span className="lg-box proc-multi" /> Multi (Cross-Process)</span>
+              </div>
+              <div className="legend-group">
+                <span className="legend-heading">Cell Markers:</span>
+                <span className="lg-item"><span className="cell-marker warn inline">!</span> Overridden Off</span>
+                <span className="lg-item"><span className="lg-box leave" /> L: Leave / CO: Comp-off</span>
+                <span className="lg-item"><span className="lg-box holiday" /> H: Public Holiday</span>
+                <span className="lg-item"><span className="lg-box off" /> Off: Weekly Off</span>
+                <span className="lg-item"><span className="lg-box idle" /> · : Reserve Capacity</span>
+              </div>
+              <div className="legend-group">
+                <span className="legend-heading">Coverage Strip:</span>
+                <span className="lg-item"><span className="cov-dot dot-ok inline" /> ✓ All Covered</span>
+                <span className="lg-item"><span className="cov-dot dot-under inline" /> ! Understaffed</span>
+                <span className="lg-item"><span className="cov-dot dot-gap inline" /> × Service Gap</span>
+              </div>
+            </div>
+          </>
+        )}
       </section>
     </div>
   );

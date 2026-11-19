@@ -1,0 +1,2261 @@
+{
+  "metadata": {
+    "title": "DataStraw Smart Workforce Scheduling Self-Test Fixture",
+    "employees_count": 30,
+    "pods_count": 3,
+    "brands_count": 15,
+    "single_primary_brands_count": 12,
+    "multi_resource_brands_count": 3,
+    "processes_count": 32,
+    "horizon_days": 7,
+    "start_date": "2026-11-23",
+    "end_date": "2026-11-29"
+  },
+  "dates": [
+    "2026-11-23",
+    "2026-11-24",
+    "2026-11-25",
+    "2026-11-26",
+    "2026-11-27",
+    "2026-11-28",
+    "2026-11-29"
+  ],
+  "holidays": [
+    {
+      "date": "2026-11-24",
+      "name": "Guru Nanak Jayanti"
+    }
+  ],
+  "pods": [
+    {
+      "id": "POD1",
+      "name": "Pod Alpha",
+      "lead_id": "E01"
+    },
+    {
+      "id": "POD2",
+      "name": "Pod Beta",
+      "lead_id": "E11"
+    },
+    {
+      "id": "POD3",
+      "name": "Pod Gamma",
+      "lead_id": "E21"
+    }
+  ],
+  "employees": [
+    {
+      "id": "E01",
+      "name": "Aarav Mehta",
+      "pod_id": "POD1",
+      "weekly_off": [
+        0
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E02",
+      "name": "Priya Sharma",
+      "pod_id": "POD1",
+      "weekly_off": [
+        1
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E03",
+      "name": "Rohan Iyer",
+      "pod_id": "POD1",
+      "weekly_off": [
+        2
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E04",
+      "name": "Kavya Nair",
+      "pod_id": "POD1",
+      "weekly_off": [
+        3
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E05",
+      "name": "Arjun Patel",
+      "pod_id": "POD1",
+      "weekly_off": [
+        4
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E06",
+      "name": "Sneha Kulkarni",
+      "pod_id": "POD1",
+      "weekly_off": [
+        5
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E07",
+      "name": "Vikram Singh",
+      "pod_id": "POD1",
+      "weekly_off": [
+        6
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E08",
+      "name": "Ananya Gupta",
+      "pod_id": "POD1",
+      "weekly_off": [
+        0
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E09",
+      "name": "Dev Malhotra",
+      "pod_id": "POD1",
+      "weekly_off": [
+        1
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E10",
+      "name": "Pooja Hegde",
+      "pod_id": "POD1",
+      "weekly_off": [
+        2
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E11",
+      "name": "Neha Joshi",
+      "pod_id": "POD2",
+      "weekly_off": [
+        2
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E12",
+      "name": "Kabir Shah",
+      "pod_id": "POD2",
+      "weekly_off": [
+        3
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E13",
+      "name": "Riya Kapoor",
+      "pod_id": "POD2",
+      "weekly_off": [
+        4
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E14",
+      "name": "Manish Verma",
+      "pod_id": "POD2",
+      "weekly_off": [
+        5
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E15",
+      "name": "Pooja Desai",
+      "pod_id": "POD2",
+      "weekly_off": [
+        6
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E16",
+      "name": "Farhan Khan",
+      "pod_id": "POD2",
+      "weekly_off": [
+        0
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E17",
+      "name": "Ishita Bose",
+      "pod_id": "POD2",
+      "weekly_off": [
+        5
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E18",
+      "name": "Sahil Ahmed",
+      "pod_id": "POD2",
+      "weekly_off": [
+        2
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E19",
+      "name": "Aditi Roy",
+      "pod_id": "POD2",
+      "weekly_off": [
+        3
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E20",
+      "name": "Tarun Gill",
+      "pod_id": "POD2",
+      "weekly_off": [
+        4
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E21",
+      "name": "Divya Reddy",
+      "pod_id": "POD3",
+      "weekly_off": [
+        3
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E22",
+      "name": "Shreya Menon",
+      "pod_id": "POD3",
+      "weekly_off": [
+        0
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E23",
+      "name": "Varun Chopra",
+      "pod_id": "POD3",
+      "weekly_off": [
+        1
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E24",
+      "name": "Nisha Agarwal",
+      "pod_id": "POD3",
+      "weekly_off": [
+        2
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E25",
+      "name": "Karan Bhatia",
+      "pod_id": "POD3",
+      "weekly_off": [
+        3
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E26",
+      "name": "Rahul Khanna",
+      "pod_id": "POD3",
+      "weekly_off": [
+        4
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E27",
+      "name": "Meera Pillai",
+      "pod_id": "POD3",
+      "weekly_off": [
+        5
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E28",
+      "name": "Sanjay Yadav",
+      "pod_id": "POD3",
+      "weekly_off": [
+        6
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E29",
+      "name": "Tara Singh",
+      "pod_id": "POD3",
+      "weekly_off": [
+        0
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    },
+    {
+      "id": "E30",
+      "name": "Yash Thakur",
+      "pod_id": "POD3",
+      "weekly_off": [
+        1
+      ],
+      "leaves": [],
+      "comp_offs": [],
+      "min_weekly_off": 1,
+      "max_weekly_off": 2
+    }
+  ],
+  "brands": [
+    {
+      "id": "B01",
+      "name": "GlowKart",
+      "category": "Beauty",
+      "pod_id": "POD1",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "RET",
+          "rule": "EXCEPT_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B02",
+      "name": "FitFuel",
+      "category": "Nutrition",
+      "pod_id": "POD1",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "RET",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B03",
+      "name": "UrbanNest",
+      "category": "Home Decor",
+      "pod_id": "POD1",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        },
+        {
+          "process_id": "NDR",
+          "rule": "EXCEPT_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B04",
+      "name": "TechTrove",
+      "category": "Electronics",
+      "pod_id": "POD1",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "ACC",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "NDR",
+          "rule": "EXCEPT_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B05",
+      "name": "PetPals",
+      "category": "Pet Care",
+      "pod_id": "POD1",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "EXCEPT_HOLIDAYS",
+          "min_staff": 1
+        },
+        {
+          "process_id": "RET",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B06",
+      "name": "StyleSutra",
+      "category": "Fashion",
+      "pod_id": "POD2",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "ACC",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        },
+        {
+          "process_id": "RET",
+          "rule": "EXCEPT_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B07",
+      "name": "SnackBox",
+      "category": "Gourmet",
+      "pod_id": "POD2",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "ACC",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B08",
+      "name": "BabyBliss",
+      "category": "Baby Care",
+      "pod_id": "POD2",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "EXCEPT_HOLIDAYS",
+          "min_staff": 1
+        },
+        {
+          "process_id": "NDR",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B09",
+      "name": "GreenLeaf",
+      "category": "Organic",
+      "pod_id": "POD2",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        },
+        {
+          "process_id": "RET",
+          "rule": "EXCEPT_HOLIDAYS",
+          "min_staff": 1
+        },
+        {
+          "process_id": "ACC",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B10",
+      "name": "AutoAce",
+      "category": "Automotive",
+      "pod_id": "POD2",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "NDR",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B11",
+      "name": "BookBarn",
+      "category": "Books",
+      "pod_id": "POD3",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        },
+        {
+          "process_id": "RET",
+          "rule": "NO_SUN_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B12",
+      "name": "PureDrop",
+      "category": "Beverages",
+      "pod_id": "POD3",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "ACC",
+          "rule": "EXCEPT_HOLIDAYS",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B13",
+      "name": "WellnessWave",
+      "category": "Fitness",
+      "pod_id": "POD3",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "RET",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B14",
+      "name": "AuraGlow",
+      "category": "Cosmetics",
+      "pod_id": "POD2",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        },
+        {
+          "process_id": "ACC",
+          "rule": "ALL_YEAR",
+          "min_staff": 1
+        }
+      ]
+    },
+    {
+      "id": "B15",
+      "name": "SwiftCart",
+      "category": "Logistics",
+      "pod_id": "POD3",
+      "processes": [
+        {
+          "process_id": "CS",
+          "rule": "ALL_YEAR",
+          "min_staff": 2
+        }
+      ]
+    }
+  ],
+  "allocations": [
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "NDR",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "NDR",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E16",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E17",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E29",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "role": "primary"
+    },
+    {
+      "employee_id": "E22",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E22",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E24",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E07",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E08",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E09",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E09",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E19",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E20",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E20",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E20",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E23",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E23",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "role": "backup"
+    },
+    {
+      "employee_id": "E24",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "role": "backup"
+    }
+  ],
+  "incompatible_pairs": [
+    {
+      "brand_id_1": "B01",
+      "process_id_1": "CS",
+      "brand_id_2": "B14",
+      "process_id_2": "ACC"
+    }
+  ],
+  "workload_policy": {
+    "enabled": false,
+    "demands": [],
+    "capacities": []
+  },
+  "reference_roster": [
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E22",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E01",
+      "brand_id": "B01",
+      "process_id": "RET",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E02",
+      "brand_id": "B02",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E07",
+      "brand_id": "B02",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "NDR",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "NDR",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "NDR",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "NDR",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "NDR",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E03",
+      "brand_id": "B03",
+      "process_id": "NDR",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E09",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E04",
+      "brand_id": "B04",
+      "process_id": "NDR",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E10",
+      "brand_id": "B04",
+      "process_id": "ACC",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E05",
+      "brand_id": "B05",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E11",
+      "brand_id": "B06",
+      "process_id": "RET",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E19",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E12",
+      "brand_id": "B07",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E20",
+      "brand_id": "B07",
+      "process_id": "ACC",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "NDR",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "NDR",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "NDR",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "NDR",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "NDR",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E13",
+      "brand_id": "B08",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E14",
+      "brand_id": "B09",
+      "process_id": "RET",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E15",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E20",
+      "brand_id": "B10",
+      "process_id": "NDR",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E25",
+      "brand_id": "B11",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E23",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "ACC",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E26",
+      "brand_id": "B12",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E21",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E27",
+      "brand_id": "B13",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E23",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E28",
+      "brand_id": "B13",
+      "process_id": "RET",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E16",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E16",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E16",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E16",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E16",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E16",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E18",
+      "brand_id": "B14",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E17",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E17",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E17",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E17",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E22",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E17",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E17",
+      "brand_id": "B14",
+      "process_id": "ACC",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E24",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E29",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-23"
+    },
+    {
+      "employee_id": "E29",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-24"
+    },
+    {
+      "employee_id": "E29",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-25"
+    },
+    {
+      "employee_id": "E29",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-26"
+    },
+    {
+      "employee_id": "E29",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-27"
+    },
+    {
+      "employee_id": "E29",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-28"
+    },
+    {
+      "employee_id": "E24",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    },
+    {
+      "employee_id": "E30",
+      "brand_id": "B15",
+      "process_id": "CS",
+      "date": "2026-11-29"
+    }
+  ]
+}

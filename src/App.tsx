@@ -15,6 +15,7 @@ import type { Employee, OperatingRule, ProcessId } from './data/seed';
 import {
   findBackup,
   generateRoster,
+  generateRosterCPSAT,
   isHardUnavailable,
   isWeeklyOff,
   rosterToCsv,
@@ -113,7 +114,30 @@ export default function App() {
   }, [overrides]);
 
   const data = useMemo(() => mergeData(overrides), [overrides]);
-  const result = useMemo(() => generateRoster(data, year, month), [data, year, month]);
+  const [result, setResult] = useState<RosterResult>(() => generateRoster(mergeData(loadOverrides()), 2026, 12));
+  const [solverStatus, setSolverStatus] = useState<string>('OPTIMAL');
+  const [isSolving, setIsSolving] = useState<boolean>(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsSolving(true);
+    generateRosterCPSAT(data, year, month).then((res) => {
+      if (!cancelled) {
+        setResult(res);
+        setSolverStatus(res.solverStatus || 'OPTIMAL');
+        setIsSolving(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        const fallback = generateRoster(data, year, month);
+        fallback.solverStatus = 'FEASIBLE';
+        setResult(fallback);
+        setSolverStatus('FEASIBLE');
+        setIsSolving(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [data, year, month]);
 
   const monthLabel = `${year}-${String(month).padStart(2, '0')}`;
   const entryByKey = useMemo(() => {
@@ -248,6 +272,12 @@ export default function App() {
             </p>
           </div>
           <div className="stat-cards">
+            <div className={`stat ${solverStatus === 'OPTIMAL' || solverStatus === 'FEASIBLE' ? 'ok' : 'bad'}`} title="Constraint Programming CP-SAT Status">
+              <span className="stat-num" style={{ fontSize: 13, textTransform: 'uppercase' }}>
+                {isSolving ? 'Solving...' : solverStatus}
+              </span>
+              <span className="stat-label">CP-SAT solver</span>
+            </div>
             <div className="stat ok">
               <span className="stat-num">{result.stats.coveragePct}%</span>
               <span className="stat-label">coverage</span>

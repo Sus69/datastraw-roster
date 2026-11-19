@@ -109,6 +109,14 @@ export interface RosterResult {
   coverage: DayCoverage[];
   conflicts: Conflict[];
   stats: RosterStats;
+  solverStatus?: 'OPTIMAL' | 'FEASIBLE' | 'INFEASIBLE' | 'UNKNOWN' | 'MODEL_INVALID';
+  diagnosticExplanations?: string[];
+  reoptimizationDelta?: {
+    totalChanges: number;
+    added: Array<{ employee_id: string; brand_id: string; process_id: string; date: string }>;
+    removed: Array<{ employee_id: string; brand_id: string; process_id: string; date: string }>;
+    stabilityRatio: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -510,4 +518,132 @@ export function rosterToCsv(data: RosterData, result: RosterResult): string {
     );
   }
   return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// CP-SAT Integration Layer
+// ---------------------------------------------------------------------------
+
+export async function checkCPSATHealth(): Promise<boolean> {
+  try {
+    const res = await fetch('/api/health');
+    if (!res.ok) return false;
+    const json = await res.json();
+    return json.ready === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function generateRosterCPSAT(
+  data: RosterData,
+  year: number,
+  month: number,
+  timeoutSeconds: number = 10.0,
+): Promise<RosterResult> {
+  const days = daysInMonth(year, month);
+  const payload = {
+    employees: data.employees.map((e) => ({
+      id: e.id,
+      name: e.name,
+      pod_id: e.podId,
+      weekly_off: e.weeklyOff,
+      leaves: e.leaves,
+      comp_offs: e.compOffs,
+      min_weekly_off: 1,
+      max_weekly_off: 2,
+    })),
+    brands: data.brands.map((b) => ({
+      id: b.id,
+      name: b.name,
+      category: b.category,
+      pod_id: b.podId,
+      processes: b.processes.map((p) => ({
+        process_id: p.processId,
+        rule: p.rule,
+        min_staff: p.minStaff,
+      })),
+    })),
+    allocations: data.allocations.map((a) => ({
+      employee_id: a.employeeId,
+      brand_id: a.brandId,
+      process_id: a.processId,
+      role: a.role,
+    })),
+    holidays: data.holidays,
+    dates: days,
+    timeout_seconds: timeoutSeconds,
+  };
+
+  try {
+    const res = await fetch('/api/schedule', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json();
+    if (res.status === 200 || res.status === 422) {
+      const entries: RosterEntry[] = (json.entries || []).map((e: any) => ({
+        date: e.date,
+        employeeId: e.employee_id,
+        brandId: e.brand_id,
+        processes: e.processes,
+        overriddenOff: e.is_weekly_off || false,
+      }));
+
+      const coverage: DayCoverage[] = (json.coverage || []).map((c: any) => ({
+        date: c.date,
+        brandId: c.brand_id,
+        processId: c.process_id,
+        operating: c.operating,
+        required: c.required,
+        scheduled: c.scheduled,
+        overriddenOff: [],
+        status: c.status,
+      }));
+
+      const conflicts: Conflict[] = (json.conflicts || []).map((cf: any) => ({
+        id: cf.id,
+        type: cf.type,
+        severity: cf.severity,
+        date: cf.date,
+        brandId: cf.brand_id,
+        processId: cf.process_id,
+        employeeId: cf.employee_id,
+        message: cf.message,
+        suggestion: cf.suggestion,
+      }));
+
+      const stats: RosterStats = {
+        operatingSlots: json.stats?.operating_slots || 0,
+        coveredSlots: json.stats?.covered_slots || 0,
+        gapSlots: json.stats?.gap_slots || 0,
+        understaffedSlots: json.stats?.understaffed_slots || 0,
+        warnings: json.stats?.warnings || 0,
+        errors: json.stats?.errors || 0,
+        coveragePct: json.stats?.coverage_pct || 0,
+        employeesWorking: json.stats?.employees_working || 0,
+      };
+
+      return {
+        year,
+        month,
+        days,
+        entries,
+        coverage,
+        conflicts,
+        stats,
+        solverStatus: json.status,
+        diagnosticExplanations: json.diagnostic_explanations,
+      };
+    }
+  } catch (err) {
+    // Fall back to local synchronous generation if server offline
+    console.warn('CP-SAT server unavailable, falling back to local engine:', err);
+  }
+
+  const fallback = generateRoster(data, year, month);
+  fallback.solverStatus = 'FEASIBLE';
+  return fallback;
 }

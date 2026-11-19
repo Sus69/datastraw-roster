@@ -169,11 +169,69 @@ CSV/Excel export of the coverage view.
 ## Project structure
 
 ```
+engine/
+  domain.py         Domain dataclasses, normalized schemas, and serialization
+  model.py          Core CP-SAT mathematical formulation and solver (Google OR-Tools)
+  validator.py      Independent hard-constraint verifier
+  conflict_analyzer.py Diagnostic slack model and infeasibility root-cause analyzer
+  reoptimizer.py    Dynamic re-optimization engine (minimizing assignment churn)
+  cli.py            CLI interface (solve, validate, reoptimize)
+  server.py         Lightweight HTTP API bridge server
+tests/
+  generate_fixture.py Generator and independent validator for datastraw_self_test_fixture.json
+  test_scheduling.py Comprehensive pytest test suite (19 test cases)
 src/
   data/seed.ts      Types + seed data (employees, brands, pods, allocations, holidays)
-  lib/engine.ts     Roster generation, validation, backup search, CSV export (pure functions)
-  App.tsx           UI: sidebar, month picker, 6 views, simulate-change, editing
+  lib/engine.ts     Roster generation, validation, backup search, CP-SAT bridge, CSV export
+  App.tsx           UI: sidebar, month picker, 6 views, simulate-change, editing, CP-SAT badge
   App.css           Plain CSS, dark sidebar + light content
+```
+
+## Constraint Programming (CP-SAT) Engine
+
+The scheduling model is formulated as an exact Constraint Programming problem solved with Google OR-Tools CP-SAT:
+
+- Decision Variables:
+  - $x_{eqd} \in \{0, 1\}$: Employee $e$ assigned to process $q$ on day $d$.
+  - $w_{ed} \in \{0, 1\}$: Employee working status indicator.
+  - $o_{ed} \in \{0, 1\}$: Weekly-off allocation indicator.
+  - $n_{ed} \in \{0, 1\}$: Available but unassigned indicator.
+  - $u_{ed} \in \{0, 1\}$: Fixed unavailability indicator (approved leaves, comp-offs).
+- Hard Constraints:
+  - State partition: $w_{ed} + o_{ed} + n_{ed} = 1 - u_{ed}$
+  - Assignment eligibility: $x_{eqd} \le P_{eq} + B_{eq}$
+  - Operating calendar: $x_{eqd} \le G_{qd}$
+  - Availability: $x_{eqd} \le 1 - u_{ed}$
+  - Working consistency: $x_{eqd} \le w_{ed}$ and $w_{ed} \le \sum_q x_{eqd}$
+  - Weekly-off exclusivity: $w_{ed} + o_{ed} \le 1$
+  - Weekly-off entitlement: $L_{ew}^{min} \le \sum_{d \in D_w} o_{ed} \le L_{ew}^{max}$
+  - Minimum coverage: $\sum_e x_{eqd} \ge M_{qd}$
+  - Incompatible assignments: $x_{eqd} + x_{erd} \le 1$ for all explicitly incompatible pairs $(q, r)$
+- Objectives:
+  - Re-optimization: $\min \sum_{e,q,d} \Delta_{eqd}$ where $\Delta_{eqd} \ge |x_{eqd} - x^0_{eqd}|$
+  - Primary resource preference over backup
+  - Preferred weekly off satisfaction
+  - Minimization of excess staffing
+- Diagnostic Slack Model:
+  When hard constraints are infeasible, the engine minimizes diagnostic shortage slack $\min \sum s_{qd}$ to isolate exact dates, processes, and shortages without presenting invalid rosters.
+
+## Commands
+
+```bash
+# Run complete test suite (19 tests)
+npm test
+
+# Run CP-SAT solver via CLI
+npm run engine:solve -- --input datastraw_self_test_fixture.json --output roster.json
+
+# Validate existing roster against hard constraints
+npm run engine:validate -- --input datastraw_self_test_fixture.json --roster roster.json
+
+# Re-optimize schedule after operational disruption
+npm run engine:reoptimize -- --input datastraw_self_test_fixture.json --roster roster.json --emp E01 --date 2026-11-25
+
+# Start local CP-SAT API bridge server
+npm run engine:server
 ```
 
 ## Submission checklist (from the brief)

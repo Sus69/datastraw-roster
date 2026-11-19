@@ -31,9 +31,9 @@ export function MonthMap(props: MonthMapProps) {
     <div className="month-map-wrapper">
       <div className="month-map-head">
         <div>
-          <h3 className="month-map-title">Executive Month Map (34 Staff x {result.days.length} Days)</h3>
+          <h3 className="month-map-title">Month map ({data.employees.length} staff · {result.days.length} days)</h3>
           <p className="muted small" style={{ margin: '2px 0 0' }}>
-            Full workforce overview. Click any cell to jump directly into the detail grid at that exact employee and day.
+            Full workforce overview. Click any cell to jump to that shift in the detail grid.
           </p>
         </div>
       </div>
@@ -42,7 +42,7 @@ export function MonthMap(props: MonthMapProps) {
         <table className="month-map-table">
           <thead>
             <tr>
-              <th className="map-sticky-col map-header-corner">Pod / Employee</th>
+              <th className="map-sticky-col map-header-corner">Pod / employee</th>
               {result.days.map((d) => {
                 const dt = new Date(`${d}T12:00:00`);
                 const isSun = dt.getDay() === 0;
@@ -52,7 +52,7 @@ export function MonthMap(props: MonthMapProps) {
                     className={`map-day-header ${isSun ? 'map-sun' : ''}`}
                     title={`${d} (${WEEKDAYS[dt.getDay()]})`}
                   >
-                    <span className="map-day-num">{dt.getDate()}</span>
+                    <span className="map-day-num tabular">{dt.getDate()}</span>
                   </th>
                 );
               })}
@@ -69,7 +69,7 @@ export function MonthMap(props: MonthMapProps) {
                   <tr className="map-pod-group-row">
                     <td className="map-sticky-col map-pod-name" colSpan={result.days.length + 1}>
                       <span className="map-pod-tag">{pod.name}</span>
-                      <span className="map-pod-count">({podEmployees.length} employees)</span>
+                      <span className="map-pod-count tabular">({podEmployees.length} staff)</span>
                     </td>
                   </tr>
 
@@ -95,7 +95,7 @@ export function MonthMap(props: MonthMapProps) {
                           const isOverridden = entry.overriddenOff;
                           const tip = `${emp.name} — ${d}: ${brand?.name ?? entry.brandId} (${procNames})${
                             isOverridden ? ' [Weekly off overridden]' : ''
-                          } — Click to inspect in detail grid`;
+                          }`;
 
                           return (
                             <td
@@ -112,8 +112,8 @@ export function MonthMap(props: MonthMapProps) {
                         }
 
                         if (isHardUnavailable(emp, d)) {
-                          const reason = emp.leaves.includes(d) ? 'Planned Leave' : 'Comp-off';
-                          const tip = `${emp.name} — ${d}: ${reason} (Approved unavailability) — Click to inspect in detail grid`;
+                          const reason = emp.leaves.includes(d) ? 'Planned leave' : 'Comp-off';
+                          const tip = `${emp.name} — ${d}: ${reason}`;
                           return (
                             <td
                               key={d}
@@ -126,7 +126,7 @@ export function MonthMap(props: MonthMapProps) {
                         }
 
                         if (holiday) {
-                          const tip = `${emp.name} — ${d}: Public Holiday (${holiday.name}) — Click to inspect in detail grid`;
+                          const tip = `${emp.name} — ${d}: Public holiday (${holiday.name})`;
                           return (
                             <td
                               key={d}
@@ -139,7 +139,7 @@ export function MonthMap(props: MonthMapProps) {
                         }
 
                         if (isWeeklyOff(emp, d)) {
-                          const tip = `${emp.name} — ${d}: Preferred Weekly Off — Click to inspect in detail grid`;
+                          const tip = `${emp.name} — ${d}: Preferred weekly off`;
                           return (
                             <td
                               key={d}
@@ -151,7 +151,7 @@ export function MonthMap(props: MonthMapProps) {
                           );
                         }
 
-                        const tip = `${emp.name} — ${d}: Not scheduled (Reserve capacity) — Click to inspect in detail grid`;
+                        const tip = `${emp.name} — ${d}: Not scheduled (Reserve capacity)`;
                         return (
                           <td
                             key={d}
@@ -172,17 +172,17 @@ export function MonthMap(props: MonthMapProps) {
       </div>
 
       <div className="map-legend">
-        <span className="map-lg-title">Map Status Legend:</span>
-        <span className="map-lg-item"><span className="map-sq-sample work proc-cs" /> CS</span>
-        <span className="map-lg-item"><span className="map-sq-sample work proc-acc" /> ACC</span>
-        <span className="map-lg-item"><span className="map-sq-sample work proc-ret" /> RET</span>
-        <span className="map-lg-item"><span className="map-sq-sample work proc-ndr" /> NDR</span>
-        <span className="map-lg-item"><span className="map-sq-sample work proc-multi" /> Multi</span>
-        <span className="map-lg-item"><span className="map-sq-sample work overridden" /> Overridden</span>
-        <span className="map-lg-item"><span className="map-sq-sample leave" /> Leave</span>
-        <span className="map-lg-item"><span className="map-sq-sample holiday" /> Holiday</span>
-        <span className="map-lg-item"><span className="map-sq-sample off" /> Weekly Off</span>
-        <span className="map-lg-item"><span className="map-sq-sample idle" /> Reserve</span>
+        <span className="lg-label">Legend:</span>
+        <span className="lg-item"><span className="map-sq-sample work proc-cs" /> Customer support</span>
+        <span className="lg-item"><span className="map-sq-sample work proc-acc" /> Abandoned cart</span>
+        <span className="lg-item"><span className="map-sq-sample work proc-ret" /> Retention</span>
+        <span className="lg-item"><span className="map-sq-sample work proc-ndr" /> Non-delivery</span>
+        <span className="lg-item"><span className="map-sq-sample work proc-multi" /> Multi</span>
+        <span className="lg-item"><span className="map-sq-sample work overridden" /> Override</span>
+        <span className="lg-item"><span className="map-sq-sample leave" /> Leave</span>
+        <span className="lg-item"><span className="map-sq-sample holiday" /> Holiday</span>
+        <span className="lg-item"><span className="map-sq-sample off" /> Weekly off</span>
+        <span className="lg-item"><span className="map-sq-sample idle" /> Reserve</span>
       </div>
     </div>
   );

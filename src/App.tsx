@@ -7,7 +7,6 @@ import {
   PODS,
   RULES,
   WEEKDAYS,
-  dayOfWeek,
   isHoliday,
   processLabel,
 } from './data/seed';
@@ -20,14 +19,12 @@ import {
   isWeeklyOff,
   rosterToCsv,
 } from './lib/engine';
-import type { BackupCandidate, Conflict, RosterData, RosterResult } from './lib/engine';
+import type { Conflict, RosterData, RosterResult } from './lib/engine';
 import { MonthMap } from './components/MonthMap';
 import './App.css';
 
 // ---------------------------------------------------------------------------
-// Overrides: everything the manager edits is stored here and persisted to
-// localStorage. The seed data itself is never mutated, so "Reset to seed"
-// is a one-click restore.
+// Overrides: Manager edits stored in localStorage.
 // ---------------------------------------------------------------------------
 
 export interface ExtraAllocation {
@@ -52,7 +49,7 @@ const EMPTY_OVERRIDES: Overrides = {
   rule: {},
   extraAllocations: [],
 };
-const STORAGE_KEY = 'datastraw-roster-overrides-v1';
+const STORAGE_KEY = 'datastraw-roster-overrides-v2';
 
 function loadOverrides(): Overrides {
   try {
@@ -124,6 +121,18 @@ function getProcessClass(processes: ProcessId[]): string {
   return 'proc-multi';
 }
 
+function getProcessChipLetter(processes: ProcessId[]): string {
+  if (!processes || processes.length === 0) return '';
+  if (processes.length === 1) {
+    const p = processes[0];
+    if (p === 'CS') return 'C';
+    if (p === 'ACC') return 'A';
+    if (p === 'RET') return 'R';
+    if (p === 'NDR') return 'N';
+  }
+  return 'M';
+}
+
 function download(filename: string, text: string) {
   const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -148,6 +157,11 @@ export default function App() {
   const [density, setDensity] = useState<'compact' | 'comfortable'>('compact');
   const [inspectorTarget, setInspectorTarget] = useState<{ date: string; employeeId?: string } | null>(null);
 
+  // When I Work style view options
+  const [hideUnscheduled, setHideUnscheduled] = useState<boolean>(false);
+  const [highlightGapsOnly, setHighlightGapsOnly] = useState<boolean>(false);
+  const [colorBy, setColorBy] = useState<'process' | 'brand'>('process');
+
   // Simulate-a-change panel
   const [simEmp, setSimEmp] = useState(EMPLOYEES[0].id);
   const [simDate, setSimDate] = useState('2026-12-14');
@@ -159,7 +173,6 @@ export default function App() {
 
   const data = useMemo(() => mergeData(overrides), [overrides]);
   const [result, setResult] = useState<RosterResult>(() => generateRoster(mergeData(loadOverrides()), 2026, 12));
-  const [solverStatus, setSolverStatus] = useState<string>('OPTIMAL');
   const [isSolving, setIsSolving] = useState<boolean>(false);
 
   useEffect(() => {
@@ -170,7 +183,6 @@ export default function App() {
     generateRosterCPSAT(data, year, month).then((res) => {
       if (!cancelled) {
         setResult(res);
-        setSolverStatus(res.solverStatus || 'OPTIMAL');
         setIsSolving(false);
       }
     }).catch(() => {
@@ -178,7 +190,6 @@ export default function App() {
         const fallback = generateRoster(data, year, month);
         fallback.solverStatus = 'FEASIBLE';
         setResult(fallback);
-        setSolverStatus('FEASIBLE');
         setIsSolving(false);
       }
     });
@@ -192,14 +203,19 @@ export default function App() {
     return m;
   }, [result]);
 
+  const scheduledEmpIds = useMemo(() => {
+    return new Set(result.entries.map((e) => e.employeeId));
+  }, [result.entries]);
+
   const filteredEmployees = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return data.employees.filter(
-      (e) =>
-        (podFilter === 'all' || e.podId === podFilter) &&
-        (q === '' || e.name.toLowerCase().includes(q)),
-    );
-  }, [data, search, podFilter]);
+    return data.employees.filter((e) => {
+      if (hideUnscheduled && !scheduledEmpIds.has(e.id)) return false;
+      if (podFilter !== 'all' && e.podId !== podFilter) return false;
+      if (q !== '' && !e.name.toLowerCase().includes(q)) return false;
+      return true;
+    });
+  }, [data, search, podFilter, hideUnscheduled, scheduledEmpIds]);
 
   const visibleConflicts = useMemo(() => {
     return result.conflicts.filter((c) => {
@@ -300,6 +316,11 @@ export default function App() {
     Object.keys(overrides.rule).length > 0 ||
     (overrides.extraAllocations && overrides.extraAllocations.length > 0);
 
+  // Counts for 7shifts compliance line
+  const gapsCount = result.conflicts.filter((c) => c.type === 'COVERAGE_GAP').length;
+  const understaffedCount = result.conflicts.filter((c) => c.type === 'UNDERSTAFFED').length;
+  const overridesCount = result.stats.warnings;
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -307,26 +328,28 @@ export default function App() {
           <div className="brand-mark">DS</div>
           <div>
             <div className="brand-title">Datastraw</div>
-            <div className="brand-sub">Smart Roster Management</div>
+            <div className="brand-sub">Roster operations</div>
           </div>
         </div>
 
-        <label className="side-label" htmlFor="month-picker">Roster month</label>
-        <input
-          id="month-picker"
-          type="month"
-          className="month-input"
-          value={monthLabel}
-          min="2026-11"
-          max="2027-02"
-          onChange={(e) => {
-            const [y, m] = e.target.value.split('-').map(Number);
-            if (y && m) {
-              setYear(y);
-              setMonth(m);
-            }
-          }}
-        />
+        <div className="month-picker-wrap">
+          <label className="side-label" htmlFor="month-picker">Roster month</label>
+          <input
+            id="month-picker"
+            type="month"
+            className="month-input"
+            value={monthLabel}
+            min="2026-11"
+            max="2027-02"
+            onChange={(e) => {
+              const [y, m] = e.target.value.split('-').map(Number);
+              if (y && m) {
+                setYear(y);
+                setMonth(m);
+              }
+            }}
+          />
+        </div>
 
         <nav className="nav">
           {VIEWS.map((v) => (
@@ -335,16 +358,16 @@ export default function App() {
               className={view === v.id ? 'nav-btn active' : 'nav-btn'}
               onClick={() => setView(v.id)}
             >
-              {v.label}
+              <span>{v.label}</span>
               {v.id === 'conflicts' && (
-                <div style={{ display: 'inline-flex', gap: 4 }}>
+                <div className="nav-badges-wrap">
                   {result.stats.errors > 0 && (
-                    <span className="nav-badge" title={`${result.stats.errors} hard shortages`}>
+                    <span className="nav-badge danger tabular" title={`${result.stats.errors} coverage shortages`}>
                       {result.stats.errors}
                     </span>
                   )}
                   {result.stats.warnings > 0 && (
-                    <span className="nav-badge warn" title={`${result.stats.warnings} weekly-off overrides`}>
+                    <span className="nav-badge warn tabular" title={`${result.stats.warnings} weekly-off overrides`}>
                       {result.stats.warnings}
                     </span>
                   )}
@@ -355,54 +378,43 @@ export default function App() {
         </nav>
 
         <div className="side-actions">
-          <button className="btn btn-light" onClick={exportCsv}>Export roster CSV</button>
+          <button className="btn btn-secondary" onClick={exportCsv}>Export roster CSV</button>
           <button className="btn btn-ghost" onClick={resetAll} disabled={!hasOverrides}>
             Reset to seed data
           </button>
         </div>
 
         <p className="side-note">
-          Weekly offs are preferences: mandatory client coverage can override them
-          (shown amber). Leaves and comp-offs are hard blocks. Nothing is ever
-          silently left uncovered — gaps are flagged red.
+          Leaves and comp-offs represent absolute unavailability. Client coverage takes precedence over weekly off preferences.
         </p>
       </aside>
 
       <main className="content">
         <header className="page-head">
-          <div>
+          <div className="page-head-main">
             <h1>
               {VIEWS.find((v) => v.id === view)?.label} —{' '}
               {new Date(year, month - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' })}
             </h1>
-            <p className="muted">
-              {data.employees.length} employees · {data.brands.length} brands · {PODS.length} pods ·{' '}
-              {result.stats.operatingSlots} operating brand-process days
-            </p>
-          </div>
-          <div className="stat-cards">
-            <div
-              className={`stat ${solverStatus === 'OPTIMAL' || solverStatus === 'FEASIBLE' ? 'ok' : 'warn'}`}
-              title="Constraint Programming (CP-SAT) Engine Status"
-            >
-              <span className="stat-num" style={{ fontSize: 13, textTransform: 'uppercase' }}>
-                {isSolving ? 'Solving...' : solverStatus === 'INFEASIBLE' ? 'DIAGNOSED' : solverStatus}
-              </span>
-              <span className="stat-label">
-                {solverStatus === 'INFEASIBLE' ? 'CP-SAT (Slack)' : 'CP-SAT solver'}
-              </span>
-            </div>
-            <div className="stat ok" title={`${result.stats.coveredSlots} of ${result.stats.operatingSlots} operating slots covered`}>
-              <span className="stat-num">{result.stats.coveragePct}%</span>
-              <span className="stat-label">coverage</span>
-            </div>
-            <div className="stat bad" title={`${result.stats.errors} coverage shortages detected`}>
-              <span className="stat-num">{result.stats.errors}</span>
-              <span className="stat-label">shortages</span>
-            </div>
-            <div className="stat warn" title={`${result.stats.warnings} weekly-off preferences overridden to preserve coverage`}>
-              <span className="stat-num">{result.stats.warnings}</span>
-              <span className="stat-label">overrides</span>
+
+            {/* 7shifts-style compliance summary line */}
+            <div className="compliance-line">
+              {gapsCount > 0 ? (
+                <span className="comp-danger tabular">{gapsCount} coverage gap{gapsCount !== 1 ? 's' : ''}</span>
+              ) : (
+                <span className="comp-ok">0 coverage gaps</span>
+              )}
+              <span className="comp-sep"> · </span>
+              {understaffedCount > 0 ? (
+                <span className="comp-danger tabular">{understaffedCount} understaffed day{understaffedCount !== 1 ? 's' : ''}</span>
+              ) : (
+                <span className="comp-ok">0 understaffed days</span>
+              )}
+              <span className="comp-sep"> · </span>
+              <span className="comp-warn tabular">{overridesCount} weekly-off override{overridesCount !== 1 ? 's' : ''}</span>
+              <span className="comp-sep"> · </span>
+              <span className="comp-dim tabular">{result.stats.coveredSlots} of {result.stats.operatingSlots} shifts covered ({result.stats.coveragePct}%)</span>
+              {isSolving && <span className="comp-solving"> · Solving...</span>}
             </div>
           </div>
         </header>
@@ -419,6 +431,12 @@ export default function App() {
             setPodFilter={setPodFilter}
             density={density}
             setDensity={setDensity}
+            hideUnscheduled={hideUnscheduled}
+            setHideUnscheduled={setHideUnscheduled}
+            highlightGapsOnly={highlightGapsOnly}
+            setHighlightGapsOnly={setHighlightGapsOnly}
+            colorBy={colorBy}
+            setColorBy={setColorBy}
             onInspectDate={(date, empId) => setInspectorTarget({ date, employeeId: empId })}
             onJumpToConflicts={() => {
               setView('conflicts');
@@ -500,13 +518,11 @@ export default function App() {
 }
 
 // ---------------------------------------------------------------------------
-// Item 1: Attention Needed Strip Component
+// Attention Needed Strip: Flat surface, hairline borders, no nested cards
 // ---------------------------------------------------------------------------
 
 interface AttentionStripProps {
   conflicts: Conflict[];
-  month: number;
-  year: number;
   onInspectDate: (date: string, employeeId?: string) => void;
   onJumpToConflicts: () => void;
 }
@@ -517,12 +533,9 @@ function AttentionNeededStrip(props: AttentionStripProps) {
     return (
       <div className="attention-strip clean">
         <div className="attention-header">
-          <span className="cov-symbol ok">✓</span>
-          <strong>All Operational Coverage Fully Satisfied</strong>
+          <strong>No coverage gaps in December 2026.</strong>
+          <span className="muted small">All mandatory client operating rules are fully satisfied.</span>
         </div>
-        <p className="muted small" style={{ margin: '4px 0 0' }}>
-          Constraint Programming engine satisfied all operating brand processes with zero service shortages.
-        </p>
       </div>
     );
   }
@@ -531,92 +544,80 @@ function AttentionNeededStrip(props: AttentionStripProps) {
     <div className="attention-strip">
       <div className="attention-header">
         <div className="attention-title-group">
-          <span className="attention-badge">{errors.length} SHORTAGES</span>
-          <h3>Attention Needed: Critical Coverage Shortages Flagged</h3>
+          <span className="attention-badge tabular">{errors.length} shortages</span>
+          <h2 className="attention-heading">Coverage shortages ({errors.length})</h2>
         </div>
-        <button className="btn btn-small btn-danger" onClick={props.onJumpToConflicts}>
-          View All in Diagnosis View
+        <button className="btn btn-small btn-secondary" onClick={props.onJumpToConflicts}>
+          View all in conflicts view
         </button>
       </div>
-      <p className="attention-desc">
-        Under company guidelines, coverage gaps are never hidden or silently relaxed. Review the
-        primary operational shortages below and click to inspect backup options or assign cover:
-      </p>
 
-      <div className="attention-grid">
-        {/* GlowKart Incident */}
-        <div className="attention-card error">
-          <div className="att-card-head">
+      <div className="attention-list">
+        <div className="att-item error">
+          <div className="att-item-meta">
             <span className="att-brand">GlowKart · Retention</span>
-            <span className="att-dates">Dec 8 – Dec 10</span>
+            <span className="att-dates tabular">Dec 8 – 10 (3 days)</span>
           </div>
           <p className="att-body">
-            Primary <strong>Aarav Mehta</strong> is on approved planned leave. No secondary backup authorized.
-            Retention coverage drops to 0 staff across all 3 days.
+            Aarav Mehta is on approved planned leave. No authorized backup allocated. 0 of 1 required staff scheduled.
           </p>
           <div className="att-actions">
             <button className="btn btn-small btn-primary" onClick={() => props.onInspectDate('2026-12-08')}>
               Inspect Dec 8
             </button>
-            <button className="btn btn-small btn-light" onClick={() => props.onInspectDate('2026-12-09')}>
+            <button className="btn btn-small btn-secondary" onClick={() => props.onInspectDate('2026-12-09')}>
               Dec 9
             </button>
-            <button className="btn btn-small btn-light" onClick={() => props.onInspectDate('2026-12-10')}>
+            <button className="btn btn-small btn-secondary" onClick={() => props.onInspectDate('2026-12-10')}>
               Dec 10
             </button>
           </div>
         </div>
 
-        {/* BookBarn CS Incident */}
-        <div className="attention-card error">
-          <div className="att-card-head">
-            <span className="att-brand">BookBarn · Customer Support</span>
-            <span className="att-dates">Dec 21</span>
+        <div className="att-item error">
+          <div className="att-item-meta">
+            <span className="att-brand">BookBarn · Customer support</span>
+            <span className="att-dates tabular">Dec 21</span>
           </div>
           <p className="att-body">
-            Primary <strong>Meera Pillai</strong> is on approved planned leave. Zero secondary backup allocated.
-            Complete customer support outage.
+            Meera Pillai is on approved planned leave. No authorized backup allocated. Complete service gap.
           </p>
           <div className="att-actions">
             <button className="btn btn-small btn-primary" onClick={() => props.onInspectDate('2026-12-21')}>
-              Inspect &amp; Resolve Gap
+              Inspect &amp; assign backup
             </button>
           </div>
         </div>
 
-        {/* BookBarn RET Incident */}
-        <div className="attention-card error">
-          <div className="att-card-head">
+        <div className="att-item error">
+          <div className="att-item-meta">
             <span className="att-brand">BookBarn · Retention</span>
-            <span className="att-dates">Dec 21</span>
+            <span className="att-dates tabular">Dec 21</span>
           </div>
           <p className="att-body">
-            Primary <strong>Sanjay Yadav</strong> is on approved planned leave. Zero secondary backup allocated.
-            Complete retention service outage.
+            Sanjay Yadav is on approved planned leave. No authorized backup allocated. Complete service gap.
           </p>
           <div className="att-actions">
             <button className="btn btn-small btn-primary" onClick={() => props.onInspectDate('2026-12-21')}>
-              Inspect &amp; Resolve Gap
+              Inspect &amp; assign backup
             </button>
           </div>
         </div>
 
-        {/* TechTrove Dual-Staffing Shortage */}
-        <div className="attention-card warn">
-          <div className="att-card-head">
-            <span className="att-brand">TechTrove · Customer Support</span>
-            <span className="att-dates">29 Operating Days</span>
+        <div className="att-item warn">
+          <div className="att-item-meta">
+            <span className="att-brand">TechTrove · Customer support</span>
+            <span className="att-dates tabular">29 operating days</span>
           </div>
           <p className="att-body">
-            Brand operating policy mandates minimum staffing of <strong>2 agents</strong> daily.
-            Only 1 primary agent (<strong>Vikram Joshi</strong>) is allocated, leaving 29 days understaffed.
+            Operating policy requires 2 staff daily. Only 1 primary (Vikram Joshi) allocated. 29 shifts short.
           </p>
           <div className="att-actions">
-            <button className="btn btn-small btn-warn" onClick={() => props.onInspectDate('2026-12-01')}>
+            <button className="btn btn-small btn-secondary" onClick={() => props.onInspectDate('2026-12-01')}>
               Inspect Dec 1
             </button>
-            <button className="btn btn-small btn-light" onClick={props.onJumpToConflicts}>
-              View All 29 Days
+            <button className="btn btn-small btn-secondary" onClick={props.onJumpToConflicts}>
+              View all 29 days
             </button>
           </div>
         </div>
@@ -626,7 +627,7 @@ function AttentionNeededStrip(props: AttentionStripProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Overview: Attention Strip + Simulate Panel + (MonthMap | Detail Grid)
+// Overview: Attention Strip + When I Work View Options + (MonthMap | Detail)
 // ---------------------------------------------------------------------------
 
 interface OverviewProps {
@@ -640,6 +641,12 @@ interface OverviewProps {
   setPodFilter: (v: string) => void;
   density: 'compact' | 'comfortable';
   setDensity: (v: 'compact' | 'comfortable') => void;
+  hideUnscheduled: boolean;
+  setHideUnscheduled: (v: boolean) => void;
+  highlightGapsOnly: boolean;
+  setHighlightGapsOnly: (v: boolean) => void;
+  colorBy: 'process' | 'brand';
+  setColorBy: (v: 'process' | 'brand') => void;
   onInspectDate: (date: string, employeeId?: string) => void;
   onJumpToConflicts: () => void;
   simEmp: string;
@@ -659,10 +666,10 @@ function OverviewView(p: OverviewProps) {
   const brandById = new Map(data.brands.map((b) => [b.id, b]));
   const isCompact = p.density === 'compact';
 
-  // Feature 2: View toggle in Overview header ("Map | Detail")
-  const [overviewMode, setOverviewMode] = useState<'map' | 'detail'>('map');
+  // View toggle: Map | Detail
+  const [overviewMode, setOverviewMode] = useState<'map' | 'detail'>('detail');
 
-  // Feature 3: Pod collapsing in Detail Grid
+  // Pod collapsing in Detail Grid
   const [collapsedPods, setCollapsedPods] = useState<Record<string, boolean>>({});
 
   function togglePod(podId: string) {
@@ -679,7 +686,6 @@ function OverviewView(p: OverviewProps) {
     setCollapsedPods(all);
   }
 
-  // Feature 1: Clicking MonthMap cell lands on matching cell in Detail Grid
   function handleMapSelectCell(employeeId: string, date: string) {
     setOverviewMode('detail');
     const emp = data.employees.find((e) => e.id === employeeId);
@@ -693,31 +699,29 @@ function OverviewView(p: OverviewProps) {
         targetCell.classList.add('cell-pulse-target');
         setTimeout(() => {
           targetCell.classList.remove('cell-pulse-target');
-        }, 2500);
+        }, 2000);
       }
     }, 60);
   }
 
   return (
-    <div>
-      {/* 1. Put Problems First: Attention Needed Strip */}
+    <div className="overview-container">
+      {/* 1. Attention Needed Strip */}
       <AttentionNeededStrip
         conflicts={result.conflicts}
-        month={12}
-        year={2026}
         onInspectDate={p.onInspectDate}
         onJumpToConflicts={p.onJumpToConflicts}
       />
 
-      {/* Simulation Sandbox */}
+      {/* 2. Simulation Sandbox */}
       <section className="panel simulate">
         <div className="panel-head">
-          <h2>Simulate a change</h2>
-          <span className="muted">Mark an employee unavailable on a day and preview the impact before applying it.</span>
+          <h2 className="panel-title">Simulate a change</h2>
+          <span className="muted small">Preview scheduling impact of an employee absence before applying it.</span>
         </div>
         <div className="sim-row">
           <label>
-            Employee
+            <span>Employee</span>
             <select value={p.simEmp} onChange={(e) => p.setSimEmp(e.target.value)}>
               {data.employees.map((e) => (
                 <option key={e.id} value={e.id}>{e.name}</option>
@@ -725,14 +729,14 @@ function OverviewView(p: OverviewProps) {
             </select>
           </label>
           <label>
-            Unavailable on
+            <span>Unavailable on</span>
             <input type="date" value={p.simDate} onChange={(e) => p.setSimDate(e.target.value)} />
           </label>
           <button className="btn btn-primary" onClick={p.onRunSimulation}>Preview impact</button>
           {p.simPreview && (
             <>
               <button className="btn btn-danger" onClick={p.onApplySimulation}>Apply change</button>
-              <button className="btn" onClick={p.onDiscardSimulation}>Discard</button>
+              <button className="btn btn-secondary" onClick={p.onDiscardSimulation}>Discard</button>
             </>
           )}
         </div>
@@ -740,28 +744,18 @@ function OverviewView(p: OverviewProps) {
           <div className="sim-result">
             {p.simNewConflicts.length === 0 ? (
               <p className="ok-text">
-                No new conflicts. {p.simEmpName} being unavailable on {p.simDate} is absorbed by existing backup cover.
+                No new coverage gaps. {p.simEmpName} absence on {p.simDate} is absorbed by existing backup coverage.
               </p>
             ) : (
               <div>
                 <p className="bad-text">
-                  This change creates {p.simNewConflicts.length} new conflict(s):
+                  Absence generates {p.simNewConflicts.length} new operational conflict(s):
                 </p>
                 <ul className="conflict-list small">
                   {p.simNewConflicts.map((c) => (
                     <li key={c.id} className={c.severity}>
-                      <strong>{c.severity === 'error' ? 'Error' : 'Warning'}:</strong> {c.message}
+                      <strong>{c.severity === 'error' ? 'Gap' : 'Warning'}:</strong> {c.message}
                       {c.suggestion && <span className="muted"> — {c.suggestion}</span>}
-                      {c.brandId && c.processId && (
-                        <BackupList
-                          data={data}
-                          result={p.simPreview!}
-                          date={c.date}
-                          brandId={c.brandId}
-                          processId={c.processId}
-                          excludeEmployeeId={p.simEmp}
-                        />
-                      )}
                     </li>
                   ))}
                 </ul>
@@ -771,20 +765,21 @@ function OverviewView(p: OverviewProps) {
         )}
       </section>
 
-      {/* Monthly Roster Section */}
-      <section className="panel">
+      {/* 3. Monthly Roster Console with When I Work View Options Toolbar */}
+      <section className="panel roster-console-panel">
         <div className="panel-head">
-          <div>
-            <h2>Monthly roster</h2>
-            <span className="muted">
+          <div className="panel-head-title-wrap">
+            <h2 className="panel-title">Monthly roster</h2>
+            <span className="muted small">
               {overviewMode === 'map'
-                ? 'Full-month bird’s-eye view. Click any cell to jump to the matching shift in the detail grid.'
-                : 'Detailed roster grid. Click pod headers to expand or collapse team rows.'}
+                ? 'Month map overview. Click any square to jump to shift.'
+                : 'Interactive operations grid. Click cell to inspect or edit.'}
             </span>
           </div>
-          <div className="filters">
-            {/* Feature 2: View toggle ("Map | Detail") */}
-            <div className="view-mode-toggle" title="Switch between bird’s-eye MonthMap and interactive Detail Grid">
+
+          <div className="panel-head-controls">
+            {/* View Mode Toggle: Map | Detail */}
+            <div className="view-mode-toggle" role="group" aria-label="View mode">
               <button
                 type="button"
                 className={`btn-mode ${overviewMode === 'map' ? 'active' : ''}`}
@@ -800,37 +795,61 @@ function OverviewView(p: OverviewProps) {
                 Detail
               </button>
             </div>
+          </div>
+        </div>
 
+        {/* When I Work style View Options Panel */}
+        <div className="view-options-toolbar">
+          <div className="toolbar-left-options">
+            <label className="toolbar-check">
+              <input
+                type="checkbox"
+                checked={p.hideUnscheduled}
+                onChange={(e) => p.setHideUnscheduled(e.target.checked)}
+              />
+              <span>Hide unscheduled staff</span>
+            </label>
+
+            <label className="toolbar-check">
+              <input
+                type="checkbox"
+                checked={p.highlightGapsOnly}
+                onChange={(e) => p.setHighlightGapsOnly(e.target.checked)}
+              />
+              <span>Highlight gaps only</span>
+            </label>
+
+            <label className="toolbar-select-wrap">
+              <span className="toolbar-label">Colour by:</span>
+              <select
+                className="toolbar-select"
+                value={p.colorBy}
+                onChange={(e) => p.setColorBy(e.target.value as 'process' | 'brand')}
+              >
+                <option value="process">Process</option>
+                <option value="brand">Brand</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="toolbar-right-controls">
             {overviewMode === 'detail' && (
               <>
-                {/* Feature 3: Expand/Collapse All Pods */}
                 <div className="pod-collapse-controls">
-                  <button
-                    type="button"
-                    className="btn btn-small btn-light"
-                    onClick={expandAllPods}
-                    title="Expand all 4 pods to view all 34 employee rows"
-                  >
-                    Expand All
+                  <button type="button" className="btn btn-small btn-secondary" onClick={expandAllPods}>
+                    Expand all
                   </button>
-                  <button
-                    type="button"
-                    className="btn btn-small btn-light"
-                    onClick={collapseAllPods}
-                    title="Collapse all 4 pods to top-level summary rows"
-                  >
-                    Collapse All
+                  <button type="button" className="btn btn-small btn-secondary" onClick={collapseAllPods}>
+                    Collapse all
                   </button>
                 </div>
 
-                {/* Density Toggle */}
-                <div className="density-toggle">
-                  <span className="density-label">Grid:</span>
+                <div className="density-toggle" role="group" aria-label="Grid density">
+                  <span className="density-label">Density:</span>
                   <button
                     type="button"
                     className={`btn-density ${isCompact ? 'active' : ''}`}
                     onClick={() => p.setDensity('compact')}
-                    title="Compact view fits all 31 days comfortably on laptop screens"
                   >
                     Compact
                   </button>
@@ -838,31 +857,35 @@ function OverviewView(p: OverviewProps) {
                     type="button"
                     className={`btn-density ${!isCompact ? 'active' : ''}`}
                     onClick={() => p.setDensity('comfortable')}
-                    title="Comfortable view with expanded spacing"
                   >
                     Comfortable
                   </button>
                 </div>
-
-                <input
-                  className="search"
-                  type="search"
-                  placeholder="Search employee…"
-                  value={p.search}
-                  onChange={(e) => p.setSearch(e.target.value)}
-                />
-                <select value={p.podFilter} onChange={(e) => p.setPodFilter(e.target.value)}>
-                  <option value="all">All pods</option>
-                  {PODS.map((pod) => (
-                    <option key={pod.id} value={pod.id}>{pod.name}</option>
-                  ))}
-                </select>
               </>
             )}
+
+            <input
+              className="search-input"
+              type="search"
+              placeholder="Search staff…"
+              value={p.search}
+              onChange={(e) => p.setSearch(e.target.value)}
+            />
+
+            <select
+              className="toolbar-select"
+              value={p.podFilter}
+              onChange={(e) => p.setPodFilter(e.target.value)}
+            >
+              <option value="all">All pods</option>
+              {PODS.map((pod) => (
+                <option key={pod.id} value={pod.id}>{pod.name}</option>
+              ))}
+            </select>
           </div>
         </div>
 
-        {/* Conditional Rendering: MonthMap (Layer 1) vs Detail Grid (Layer 2) */}
+        {/* Layer 1: MonthMap or Layer 2: Detail Grid */}
         {overviewMode === 'map' ? (
           <MonthMap
             data={data}
@@ -872,18 +895,27 @@ function OverviewView(p: OverviewProps) {
           />
         ) : (
           <>
-            {/* Item 4: Sticky Date Header in Table Scroll Container */}
-            <div className="table-scroll">
+            <div className={`table-scroll ${p.highlightGapsOnly ? 'highlight-gaps-mode' : ''}`}>
               <table className={`roster-grid ${isCompact ? 'density-compact' : 'density-comfortable'}`}>
                 <thead>
                   <tr>
-                    <th className="sticky-col">Pod / Employee</th>
+                    <th className="sticky-col th-emp">Pod / Employee</th>
                     {result.days.map((d) => {
                       const dt = new Date(`${d}T12:00:00`);
+                      const isSun = dt.getDay() === 0;
+
+                      // Covered vs required shift counts in header (Planday style)
+                      const dayCov = result.coverage.filter((c) => c.date === d && c.operating);
+                      const requiredCount = dayCov.reduce((sum, c) => sum + c.required, 0);
+                      const scheduledCount = dayCov.reduce((sum, c) => sum + c.scheduled.length, 0);
+
                       return (
-                        <th key={d} className={dt.getDay() === 0 ? 'sun' : ''}>
-                          {dt.getDate()}
-                          <span>{WEEKDAYS[dt.getDay()]}</span>
+                        <th key={d} className={`th-day ${isSun ? 'sun' : ''}`}>
+                          <span className="th-date-num tabular">{String(dt.getDate()).padStart(2, '0')}</span>
+                          <span className="th-weekday">{WEEKDAYS[dt.getDay()]}</span>
+                          <span className="th-shift-count tabular" title={`${scheduledCount} of ${requiredCount} required shifts staffed`}>
+                            {scheduledCount}/{requiredCount}
+                          </span>
                         </th>
                       );
                     })}
@@ -901,7 +933,7 @@ function OverviewView(p: OverviewProps) {
 
                     return (
                       <React.Fragment key={pod.id}>
-                        {/* Feature 3: Pod Header Summary Row showing per-day coverage status */}
+                        {/* Pod Summary Row */}
                         <tr
                           className="pod-summary-row"
                           onClick={() => togglePod(pod.id)}
@@ -909,11 +941,11 @@ function OverviewView(p: OverviewProps) {
                         >
                           <td className="sticky-col pod-summary-label">
                             <div className="pod-summary-title">
-                              <span className="pod-toggle-icon">{isCollapsed ? '[+]' : '[-]'}</span>
-                              <strong>{pod.name}</strong>
+                              <span className="pod-toggle-icon tabular">{isCollapsed ? '[+]' : '[-]'}</span>
+                              <strong className="pod-name-text">{pod.name}</strong>
                             </div>
-                            <div className="pod-summary-meta">
-                              {podEmployees.length} staff · {isCollapsed ? 'Collapsed (click to expand)' : 'Expanded (click to collapse)'}
+                            <div className="pod-summary-meta tabular">
+                              {podEmployees.length} staff · {isCollapsed ? 'Click to expand' : 'Click to collapse'}
                             </div>
                           </td>
                           {result.days.map((d) => {
@@ -946,124 +978,171 @@ function OverviewView(p: OverviewProps) {
                             } else if (podCov.length === 0) {
                               cls = 'pod-closed';
                               symbol = '–';
-                              tip = `${pod.name} — ${d}: Closed / No operating processes`;
+                              tip = `${pod.name} — ${d}: Closed`;
                             }
 
                             return (
-                              <td
-                                key={d}
-                                className={`pod-cov-cell ${cls}`}
-                                title={tip}
-                              >
-                                {symbol}
+                              <td key={d} className={`pod-cov-cell ${cls}`} title={tip}>
+                                <span className="tabular">{symbol}</span>
                               </td>
                             );
                           })}
                         </tr>
 
-                        {/* Individual Employee Rows when not collapsed */}
+                        {/* Individual Employee Rows */}
                         {!isCollapsed &&
-                          podEmployees.map((emp) => (
-                            <tr key={emp.id} id={`detail-row-${emp.id}`}>
-                              <td
-                                className="sticky-col emp-cell"
-                                onClick={() => p.onInspectDate(result.days[0], emp.id)}
-                                title={`Click to inspect ${emp.name}`}
-                              >
-                                <span className="emp-name">{emp.name}</span>
-                                <span className="muted">{pod.name}</span>
-                              </td>
-                              {result.days.map((d) => {
-                                const entry = p.entryByKey.get(`${emp.id}|${d}`);
-                                const holiday = isHoliday(d);
-                                const cellId = `detail-cell-${emp.id}-${d}`;
+                          podEmployees.map((emp) => {
+                            const myEntries = result.entries.filter((e) => e.employeeId === emp.id);
+                            const hoursWorked = myEntries.length * 8;
+                            const brandList = [...new Set(myEntries.map((e) => brandById.get(e.brandId)?.name ?? e.brandId))];
+                            const brandSummary = brandList.length > 0 ? brandList.slice(0, 2).join(', ') : 'Reserve';
 
-                                if (entry) {
-                                  const brand = brandById.get(entry.brandId);
-                                  const procCls = getProcessClass(entry.processes);
-                                  const procLabels = entry.processes.map((pid) => processLabel(pid)).join(', ');
+                            return (
+                              <tr key={emp.id} id={`detail-row-${emp.id}`} className="emp-roster-row">
+                                {/* Homebase-style employee row header */}
+                                <td
+                                  className="sticky-col emp-cell"
+                                  onClick={() => p.onInspectDate(result.days[0], emp.id)}
+                                  title={`Click to inspect ${emp.name}`}
+                                >
+                                  <div className="emp-name">{emp.name}</div>
+                                  <div className="emp-subline tabular">
+                                    {hoursWorked}h · {brandSummary}
+                                  </div>
+                                </td>
+
+                                {result.days.map((d) => {
+                                  const entry = p.entryByKey.get(`${emp.id}|${d}`);
+                                  const holiday = isHoliday(d);
+                                  const cellId = `detail-cell-${emp.id}-${d}`;
+
+                                  if (entry) {
+                                    const brand = brandById.get(entry.brandId);
+                                    const procCls = getProcessClass(entry.processes);
+                                    const chipLetter = getProcessChipLetter(entry.processes);
+                                    const brandClass = p.colorBy === 'brand' ? `brand-${entry.brandId}` : procCls;
+                                    const procLabels = entry.processes.map((pid) => processLabel(pid)).join(', ');
+
+                                    return (
+                                      <td
+                                        key={d}
+                                        id={cellId}
+                                        className={`cell work ${brandClass} ${entry.overriddenOff ? 'overridden' : ''}`}
+                                        onClick={() => p.onInspectDate(d, emp.id)}
+                                        title={`${emp.name} — ${brand?.name ?? ''} (${procLabels})${entry.overriddenOff ? ' — Weekly off overridden' : ''}`}
+                                      >
+                                        <div className="shift-pill">
+                                          <span className={`proc-chip chip-${chipLetter.toLowerCase()}`}>
+                                            {chipLetter}
+                                          </span>
+                                          <div className="shift-content">
+                                            <span className="shift-brand">{brandShort(brand?.name ?? '', isCompact)}</span>
+                                            <span className="shift-proc">{entry.processes.join('·')}</span>
+                                          </div>
+                                          {entry.overriddenOff && (
+                                            <span className="shift-warn-marker" title="Weekly off overridden">!</span>
+                                          )}
+                                        </div>
+                                      </td>
+                                    );
+                                  }
+
+                                  if (isHardUnavailable(emp, d)) {
+                                    const reason = emp.leaves.includes(d) ? 'Leave' : 'Comp-off';
+                                    return (
+                                      <td
+                                        key={d}
+                                        id={cellId}
+                                        className="cell leave"
+                                        onClick={() => p.onInspectDate(d, emp.id)}
+                                        title={`${emp.name} — ${reason}`}
+                                      >
+                                        <span className="cell-marker-text">{emp.leaves.includes(d) ? 'L' : 'CO'}</span>
+                                      </td>
+                                    );
+                                  }
+
+                                  if (holiday) {
+                                    return (
+                                      <td
+                                        key={d}
+                                        id={cellId}
+                                        className="cell holiday"
+                                        onClick={() => p.onInspectDate(d, emp.id)}
+                                        title={`Public holiday: ${holiday.name}`}
+                                      >
+                                        <span className="cell-marker-text">H</span>
+                                      </td>
+                                    );
+                                  }
+
+                                  if (isWeeklyOff(emp, d)) {
+                                    return (
+                                      <td
+                                        key={d}
+                                        id={cellId}
+                                        className="cell off"
+                                        onClick={() => p.onInspectDate(d, emp.id)}
+                                        title={`${emp.name} — Preferred weekly off`}
+                                      >
+                                        <span className="cell-marker-text off-text">Off</span>
+                                      </td>
+                                    );
+                                  }
+
+                                  // Unscheduled cell
                                   return (
                                     <td
                                       key={d}
                                       id={cellId}
-                                      className={`cell work ${procCls} ${entry.overriddenOff ? 'overridden' : ''}`}
+                                      className="cell idle"
                                       onClick={() => p.onInspectDate(d, emp.id)}
-                                      title={`${emp.name} — ${brand?.name ?? ''} (${procLabels})${entry.overriddenOff ? ' — weekly off overridden' : ''} (Click to inspect)`}
+                                      title={`${emp.name} — Not scheduled (Reserve capacity)`}
                                     >
-                                      <span className="cell-brand">{brandShort(brand?.name ?? '', isCompact)}</span>
-                                      <span className="cell-procs">{entry.processes.join('·')}</span>
-                                      {entry.overriddenOff && (
-                                        <span className="cell-marker warn" title="Weekly off overridden">!</span>
-                                      )}
+                                      <span className="cell-marker-text idle-dot">·</span>
                                     </td>
                                   );
-                                }
-                                if (isHardUnavailable(emp, d)) {
-                                  const reason = emp.leaves.includes(d) ? 'Leave' : 'Comp-off';
-                                  return (
-                                    <td
-                                      key={d}
-                                      id={cellId}
-                                      className="cell leave"
-                                      onClick={() => p.onInspectDate(d, emp.id)}
-                                      title={`${emp.name} — ${reason} (Click to inspect)`}
-                                    >
-                                      <span className="cell-marker-text">{emp.leaves.includes(d) ? 'L' : 'CO'}</span>
-                                    </td>
-                                  );
-                                }
-                                if (holiday) {
-                                  return (
-                                    <td
-                                      key={d}
-                                      id={cellId}
-                                      className="cell holiday"
-                                      onClick={() => p.onInspectDate(d, emp.id)}
-                                      title={`Public Holiday: ${holiday.name} (Click to inspect)`}
-                                    >
-                                      <span className="cell-marker-text">H</span>
-                                    </td>
-                                  );
-                                }
-                                if (isWeeklyOff(emp, d)) {
-                                  return (
-                                    <td
-                                      key={d}
-                                      id={cellId}
-                                      className="cell off"
-                                      onClick={() => p.onInspectDate(d, emp.id)}
-                                      title={`${emp.name} — Preferred Weekly Off (Click to inspect)`}
-                                    >
-                                      <span className="cell-marker-text off-text">Off</span>
-                                    </td>
-                                  );
-                                }
-                                return (
-                                  <td
-                                    key={d}
-                                    id={cellId}
-                                    className="cell idle"
-                                    onClick={() => p.onInspectDate(d, emp.id)}
-                                    title={`${emp.name} — Not scheduled (Reserve capacity, click to inspect)`}
-                                  >
-                                    <span className="cell-marker-text idle-dot">·</span>
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
+                                })}
+                              </tr>
+                            );
+                          })}
                       </React.Fragment>
                     );
                   })}
                 </tbody>
 
-                {/* Item 2: Daily Coverage Strip Footer Row */}
+                {/* Planday-style Totals Footer pinned under every day column */}
                 <tfoot>
-                  <tr className="coverage-footer-row">
-                    <th className="sticky-col coverage-th">
-                      <div className="cov-th-title">Daily Coverage Status</div>
-                      <div className="cov-th-sub">Process staffing health</div>
-                    </th>
+                  <tr className="tfoot-row tfoot-staff">
+                    <td className="sticky-col tfoot-label">
+                      <span className="tfoot-label-title">Staff on shift</span>
+                    </td>
+                    {result.days.map((d) => {
+                      const workingCount = result.entries.filter((e) => e.date === d).length;
+                      return (
+                        <td key={d} className="tfoot-val tabular" title={`${workingCount} staff scheduled on ${d}`}>
+                          {workingCount}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  <tr className="tfoot-row tfoot-hours">
+                    <td className="sticky-col tfoot-label">
+                      <span className="tfoot-label-title">Total hours</span>
+                    </td>
+                    {result.days.map((d) => {
+                      const workingCount = result.entries.filter((e) => e.date === d).length;
+                      return (
+                        <td key={d} className="tfoot-val tabular" title={`${workingCount * 8} total staffing hours`}>
+                          {workingCount * 8}h
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  <tr className="tfoot-row tfoot-coverage">
+                    <td className="sticky-col tfoot-label">
+                      <span className="tfoot-label-title">Coverage status</span>
+                    </td>
                     {result.days.map((d) => {
                       const dayCov = result.coverage.filter((c) => c.date === d && c.operating);
                       const gaps = dayCov.filter((c) => c.status === 'gap').length;
@@ -1071,25 +1150,21 @@ function OverviewView(p: OverviewProps) {
                       const overridden = dayCov.filter((c) => c.overriddenOff.length > 0).length;
 
                       let cls = 'cov-ok';
-                      let dotCls = 'dot-ok';
-                      let markerText = '✓';
-                      let tip = `${d}: All operating processes fully covered. Click to inspect.`;
+                      let marker = '✓';
+                      let tip = `${d}: All operating processes fully covered`;
 
                       if (gaps > 0) {
                         cls = 'cov-gap';
-                        dotCls = 'dot-gap';
-                        markerText = `×${gaps}`;
-                        tip = `${d}: ${gaps} complete process gap(s). Click to inspect & assign backup.`;
+                        marker = `×${gaps}`;
+                        tip = `${d}: ${gaps} complete process gap(s)`;
                       } else if (under > 0) {
                         cls = 'cov-under';
-                        dotCls = 'dot-under';
-                        markerText = `!${under}`;
-                        tip = `${d}: ${under} understaffed process(es). Click to inspect.`;
+                        marker = `!${under}`;
+                        tip = `${d}: ${under} understaffed process(es)`;
                       } else if (overridden > 0) {
                         cls = 'cov-warn';
-                        dotCls = 'dot-warn';
-                        markerText = '!';
-                        tip = `${d}: Covered with ${overridden} weekly-off override(s). Click to inspect.`;
+                        marker = '!';
+                        tip = `${d}: Covered (${overridden} weekly-off override(s))`;
                       }
 
                       return (
@@ -1099,8 +1174,7 @@ function OverviewView(p: OverviewProps) {
                           onClick={() => p.onInspectDate(d)}
                           title={tip}
                         >
-                          <span className={`cov-dot ${dotCls}`} />
-                          <span className="cov-marker">{markerText}</span>
+                          <span className="cov-symbol tabular">{marker}</span>
                         </td>
                       );
                     })}
@@ -1109,30 +1183,19 @@ function OverviewView(p: OverviewProps) {
               </table>
             </div>
 
-            {/* Item 5: Process Color Tints & Accessible Status Legend */}
-            <div className="grid-legend-container">
-              <div className="legend-group">
-                <span className="legend-heading">Process Color Tints:</span>
-                <span className="lg-item"><span className="lg-box proc-cs" /> CS (Support)</span>
-                <span className="lg-item"><span className="lg-box proc-acc" /> ACC (Order Escalations)</span>
-                <span className="lg-item"><span className="lg-box proc-ret" /> RET (Retention)</span>
-                <span className="lg-item"><span className="lg-box proc-ndr" /> NDR (Non-Delivery)</span>
-                <span className="lg-item"><span className="lg-box proc-multi" /> Multi (Cross-Process)</span>
-              </div>
-              <div className="legend-group">
-                <span className="legend-heading">Cell Markers:</span>
-                <span className="lg-item"><span className="cell-marker warn inline">!</span> Overridden Off</span>
-                <span className="lg-item"><span className="lg-box leave" /> L: Leave / CO: Comp-off</span>
-                <span className="lg-item"><span className="lg-box holiday" /> H: Public Holiday</span>
-                <span className="lg-item"><span className="lg-box off" /> Off: Weekly Off</span>
-                <span className="lg-item"><span className="lg-box idle" /> · : Reserve Capacity</span>
-              </div>
-              <div className="legend-group">
-                <span className="legend-heading">Coverage Strip:</span>
-                <span className="lg-item"><span className="cov-dot dot-ok inline" /> ✓ All Covered</span>
-                <span className="lg-item"><span className="cov-dot dot-under inline" /> ! Understaffed</span>
-                <span className="lg-item"><span className="cov-dot dot-gap inline" /> × Service Gap</span>
-              </div>
+            {/* Compact single-line legend */}
+            <div className="grid-legend-compact">
+              <span className="lg-label">Legend:</span>
+              <span className="lg-item"><span className="lg-chip chip-c">C</span> Customer support</span>
+              <span className="lg-item"><span className="lg-chip chip-a">A</span> Abandoned cart</span>
+              <span className="lg-item"><span className="lg-chip chip-r">R</span> Retention</span>
+              <span className="lg-item"><span className="lg-chip chip-n">N</span> Non-delivery</span>
+              <span className="lg-item"><span className="lg-chip chip-m">M</span> Multi</span>
+              <span className="lg-item"><span className="lg-sample overridden" /> Overridden off</span>
+              <span className="lg-item"><span className="lg-sample leave" /> Leave</span>
+              <span className="lg-item"><span className="lg-sample holiday" /> Holiday</span>
+              <span className="lg-item"><span className="lg-sample off" /> Weekly off</span>
+              <span className="lg-item"><span className="lg-sample idle" /> Reserve</span>
             </div>
           </>
         )}
@@ -1142,7 +1205,7 @@ function OverviewView(p: OverviewProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Item 3: Inspector Modal (Clickable Grid Cells & Gap Resolution Card)
+// Inspector Modal (Floating dialog, flat surfaces, hairline borders)
 // ---------------------------------------------------------------------------
 
 interface InspectorModalProps {
@@ -1181,10 +1244,10 @@ function InspectorModal(props: InspectorModalProps) {
       <div className="inspector-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <span className="modal-date-badge">{formattedDate}</span>
-            <h3 className="modal-title">
-              {emp ? `${emp.name} — Shift & Coverage Inspector` : `Daily Coverage Inspector: ${formattedDate}`}
-            </h3>
+            <span className="modal-date-badge tabular">{formattedDate}</span>
+            <h2 className="modal-title">
+              {emp ? `${emp.name} — Shift detail` : `Coverage inspector: ${formattedDate}`}
+            </h2>
             {pod && <span className="muted small">Pod: {pod.name}</span>}
           </div>
           <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
@@ -1193,57 +1256,54 @@ function InspectorModal(props: InspectorModalProps) {
         </div>
 
         <div className="modal-body">
-          {/* Employee status section */}
           {emp && (
             <div className="modal-section">
-              <h4>Employee Assignment Status</h4>
+              <h3 className="section-title">Assignment status</h3>
               {entry ? (
                 <div className={`assignment-card ${entry.overriddenOff ? 'is-overridden' : ''}`}>
                   <div className="assign-row">
-                    <span className="assign-label">Assigned Brand:</span>
+                    <span className="assign-label">Assigned brand:</span>
                     <strong>{assignedBrand?.name ?? entry.brandId}</strong> ({assignedBrand?.category ?? 'General'})
                   </div>
                   <div className="assign-row">
-                    <span className="assign-label">Assigned Process:</span>
+                    <span className="assign-label">Assigned process:</span>
                     <strong>{entry.processes.map((pid) => processLabel(pid)).join(', ')}</strong>
                   </div>
                   <div className="assign-row">
-                    <span className="assign-label">Solver Assignment Logic:</span>
+                    <span className="assign-label">Optimization model:</span>
                     <span className="assign-note">
-                      Scheduled by CP-SAT solver. Satisfies single daily brand/process constraint and authorized skill allocations.
+                      Assigned by CP-SAT solver. Satisfies single-assignment constraint (at most 1 process daily).
                     </span>
                   </div>
                   {entry.overriddenOff && (
                     <div className="alert-box warn">
-                      <strong>Weekly Off Preference Overridden:</strong> Scheduled on preferred weekly off ({dayName})
-                      to satisfy mandatory client minimum staffing. Flagged as a soft-constraint warning.
+                      <strong>Weekly off overridden:</strong> Assigned on preferred weekly off ({dayName})
+                      to satisfy mandatory client coverage. Flagged as soft-constraint warning.
                     </div>
                   )}
                 </div>
               ) : isLeave ? (
                 <div className="alert-box error">
-                  <strong>Planned Leave (Approved):</strong> Hard constraint. The CP-SAT engine strictly prohibits
-                  scheduling on approved leave.
+                  <strong>Planned leave (Approved):</strong> Hard constraint. The CP-SAT engine strictly prohibits scheduling on approved leave.
                 </div>
               ) : isCompOff ? (
                 <div className="alert-box error">
-                  <strong>Comp-Off (Approved):</strong> Hard constraint. Resource unavailable for client coverage.
+                  <strong>Comp-off (Approved):</strong> Hard constraint. Staff unavailable for coverage.
                 </div>
               ) : holiday ? (
                 <div className="alert-box info">
-                  <strong>Public Holiday:</strong> {holiday.name}. Brand/employee operating rules apply.
+                  <strong>Public holiday:</strong> {holiday.name}.
                 </div>
               ) : isOff ? (
                 <div className="alert-box neutral">
-                  <strong>Preferred Weekly Off:</strong> Not scheduled. Available as reserve if urgent client coverage required.
+                  <strong>Preferred weekly off:</strong> Not scheduled. Available as reserve if coverage requires.
                 </div>
               ) : (
                 <div className="alert-box neutral">
-                  <strong>Reserve Floater / Unscheduled:</strong> Resource is unassigned and available on this date.
+                  <strong>Reserve floater:</strong> Unscheduled and available on this date.
                 </div>
               )}
 
-              {/* Manager Actions for this Employee */}
               <div className="modal-actions-row">
                 <button
                   type="button"
@@ -1251,25 +1311,24 @@ function InspectorModal(props: InspectorModalProps) {
                   onClick={() => props.onMarkUnavailable(emp.id, date)}
                   disabled={isLeave}
                 >
-                  {isLeave ? 'Already Marked on Leave' : `Mark ${emp.name.split(' ')[0]} Unavailable on this Day`}
+                  {isLeave ? 'Already marked on leave' : `Mark ${emp.name.split(' ')[0]} unavailable`}
                 </button>
                 <button
                   type="button"
-                  className="btn btn-small btn-light"
+                  className="btn btn-small btn-secondary"
                   onClick={() => props.onToggleWeeklyOff(emp.id, dt.getDay())}
                 >
-                  Toggle Weekly Off ({dayName})
+                  Toggle weekly off ({dayName})
                 </button>
               </div>
             </div>
           )}
 
-          {/* Operational Shortages on this Date */}
           <div className="modal-section">
             <div className="shortage-sec-head">
-              <h4>Daily Operational Health on {date}</h4>
-              <span className={`status-pill ${shortages.length > 0 ? 'bad' : 'ok'}`}>
-                {shortages.length > 0 ? `${shortages.length} Shortage(s) Flagged` : 'All Processes Covered'}
+              <h3 className="section-title">Operational coverage on {date}</h3>
+              <span className={`status-pill tabular ${shortages.length > 0 ? 'bad' : 'ok'}`}>
+                {shortages.length > 0 ? `${shortages.length} shortage(s)` : 'Fully staffed'}
               </span>
             </div>
 
@@ -1283,21 +1342,21 @@ function InspectorModal(props: InspectorModalProps) {
                   const b = data.brands.find((x) => x.id === s.brandId);
                   const candidates = findBackup(data, result, date, s.brandId, s.processId);
                   return (
-                    <div key={`${s.brandId}-${s.processId}`} className="shortage-card">
-                      <div className="shortage-card-header">
+                    <div key={`${s.brandId}-${s.processId}`} className="shortage-item">
+                      <div className="shortage-item-head">
                         <div>
                           <strong>{b?.name} — {processLabel(s.processId)}</strong>
-                          <div className="muted small">
-                            Required: {s.required} agent(s) · Currently Scheduled: {s.scheduled.length}
+                          <div className="muted small tabular">
+                            Required: {s.required} · Scheduled: {s.scheduled.length}
                           </div>
                         </div>
-                        <span className={`chip ${s.status === 'gap' ? 'bad' : 'warn'}`}>
-                          {s.status === 'gap' ? 'Service Gap' : 'Understaffed'}
+                        <span className={`chip tabular ${s.status === 'gap' ? 'bad' : 'warn'}`}>
+                          {s.status === 'gap' ? 'Service gap' : 'Understaffed'}
                         </span>
                       </div>
 
                       <div className="backup-resolution-area">
-                        <span className="backup-rec-title">Candidate Backup Recommendations:</span>
+                        <span className="backup-rec-title">Candidate backup options:</span>
                         {candidates.length === 0 ? (
                           <p className="muted small" style={{ margin: '4px 0 0' }}>
                             No allocated backup staff or cross-brand floater available in this pod on this date.
@@ -1314,9 +1373,8 @@ function InspectorModal(props: InspectorModalProps) {
                                   type="button"
                                   className="btn btn-small btn-primary"
                                   onClick={() => props.onAssignBackup(cand.employeeId, s.brandId, s.processId)}
-                                  title={`Authorize ${cand.name} to cover ${b?.name} ${s.processId}`}
                                 >
-                                  + Assign Backup Cover
+                                  + Assign backup cover
                                 </button>
                               </li>
                             ))}
@@ -1332,7 +1390,7 @@ function InspectorModal(props: InspectorModalProps) {
         </div>
 
         <div className="modal-footer">
-          <button type="button" className="btn btn-light" onClick={onClose}>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
             Close
           </button>
           {shortages.length > 0 && (
@@ -1344,43 +1402,11 @@ function InspectorModal(props: InspectorModalProps) {
                 props.onJumpToConflicts();
               }}
             >
-              View in Diagnosis View
+              View in conflicts view
             </button>
           )}
         </div>
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Backup suggestions
-// ---------------------------------------------------------------------------
-
-function BackupList(props: {
-  data: RosterData;
-  result: RosterResult;
-  date: string;
-  brandId: string;
-  processId: ProcessId;
-  excludeEmployeeId?: string;
-}) {
-  const candidates: BackupCandidate[] = findBackup(
-    props.data, props.result, props.date, props.brandId, props.processId, props.excludeEmployeeId,
-  );
-  if (candidates.length === 0) {
-    return <p className="backup none">No backup available that day — every allocated employee is unavailable or already assigned.</p>;
-  }
-  return (
-    <div className="backup">
-      <strong>Suggested backup:</strong>
-      <ul>
-        {candidates.slice(0, 3).map((c) => (
-          <li key={c.employeeId}>
-            {c.name} — {c.reason}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -1392,7 +1418,7 @@ function BackupList(props: {
 function PodsView(props: { result: RosterResult; data: RosterData }) {
   const { result, data } = props;
   return (
-    <div className="cards">
+    <div className="cards-grid">
       {PODS.map((pod) => {
         const members = data.employees.filter((e) => e.podId === pod.id);
         const lead = data.employees.find((e) => e.id === pod.leadId);
@@ -1407,16 +1433,16 @@ function PodsView(props: { result: RosterResult; data: RosterData }) {
         return (
           <section key={pod.id} className="panel pod-card">
             <div className="panel-head">
-              <h2>{pod.name}</h2>
-              <span className="muted">Lead: {lead?.name ?? '—'}</span>
+              <h2 className="panel-title">{pod.name}</h2>
+              <span className="muted small">Lead: {lead?.name ?? '—'}</span>
             </div>
-            <p className="muted">
+            <p className="muted small">
               {members.length} employees · {podBrands.length} brands ({podBrands.map((b) => b.name).join(', ')})
             </p>
-            <p>
-              <span className="chip bad">{gaps} errors</span>{' '}
-              <span className="chip warn">{warns} warnings</span>
-            </p>
+            <div className="chip-row">
+              <span className="chip bad tabular">{gaps} errors</span>
+              <span className="chip warn tabular">{warns} warnings</span>
+            </div>
             <table className="mini-table">
               <thead>
                 <tr><th>Employee</th><th>Brands</th><th>Working days</th></tr>
@@ -1431,7 +1457,7 @@ function PodsView(props: { result: RosterResult; data: RosterData }) {
                     <tr key={m.id}>
                       <td>{m.name}</td>
                       <td className="muted">{brands.join(', ')}</td>
-                      <td>{working}</td>
+                      <td className="tabular">{working}</td>
                     </tr>
                   );
                 })}
@@ -1467,27 +1493,27 @@ function BrandsView(props: {
     <div>
       <section className="panel">
         <div className="panel-head">
-          <h2>Brand</h2>
+          <h2 className="panel-title">Brand details</h2>
           <select value={brand.id} onChange={(e) => props.setSelectedBrand(e.target.value)}>
             {data.brands.map((b) => (
               <option key={b.id} value={b.id}>{b.name} — {b.category}</option>
             ))}
           </select>
         </div>
-        <p className="muted">
+        <p className="muted small">
           {brand.category} · {PODS.find((x) => x.id === brand.podId)?.name} ·{' '}
-          {covered} of {operating.length} operating brand-process days covered
-          {gaps.length > 0 && <> · <span className="bad-text">{gaps.length} uncovered</span></>}
+          <span className="tabular">{covered}</span> of <span className="tabular">{operating.length}</span> operating shifts covered
+          {gaps.length > 0 && <> · <span className="bad-text tabular">{gaps.length} uncovered</span></>}
         </p>
         <div className="table-scroll">
           <table className="mini-table brand-grid">
             <thead>
               <tr>
                 <th>Process</th>
-                <th>Rule</th>
+                <th>Operating rule</th>
                 <th>Min staff</th>
                 {result.days.map((d) => (
-                  <th key={d}>{new Date(`${d}T12:00:00`).getDate()}</th>
+                  <th key={d} className="tabular">{new Date(`${d}T12:00:00`).getDate()}</th>
                 ))}
               </tr>
             </thead>
@@ -1516,7 +1542,7 @@ function BrandsView(props: {
                       min={1}
                       max={4}
                       value={bp.minStaff}
-                      className="num-input"
+                      className="num-input tabular"
                       onChange={(e) =>
                         props.setOverrides((o) => ({
                           ...o,
@@ -1536,7 +1562,7 @@ function BrandsView(props: {
                     const cls = c.status === 'covered' ? (c.overriddenOff.length > 0 ? 'cell warn' : 'cell ok') : 'cell gap';
                     const label = c.status === 'covered' ? `${c.scheduled.length}/${c.required}` : c.status === 'gap' ? 'GAP' : `${c.scheduled.length}/${c.required}`;
                     return (
-                      <td key={d} className={cls} title={`${brand.name} — ${processLabel(bp.processId)} on ${d}: ${c.scheduled.length} of ${c.required} working`}>
+                      <td key={d} className={`${cls} tabular`} title={`${brand.name} — ${processLabel(bp.processId)} on ${d}`}>
                         {label}
                       </td>
                     );
@@ -1546,14 +1572,10 @@ function BrandsView(props: {
             </tbody>
           </table>
         </div>
-        <p className="muted small">
-          Rule and minimum-staff changes apply immediately and re-validate the whole month.
-          Edits are saved in this browser (localStorage) — use “Reset to seed data” to undo them.
-        </p>
       </section>
 
       <section className="panel">
-        <h2>Allocations for {brand.name}</h2>
+        <h2 className="panel-title">Staff allocations for {brand.name}</h2>
         <table className="mini-table">
           <thead>
             <tr><th>Employee</th><th>Process</th><th>Role</th><th>Pod</th></tr>
@@ -1587,11 +1609,11 @@ function ProcessesView(props: { result: RosterResult; data: RosterData }) {
   const { result, data } = props;
   return (
     <section className="panel">
-      <h2>Coverage by process</h2>
+      <h2 className="panel-title">Coverage by process</h2>
       <table className="mini-table">
         <thead>
           <tr>
-            <th>Process</th><th>Brands</th><th>Operating days</th><th>Covered</th><th>Gaps / short</th><th>Coverage</th>
+            <th>Process</th><th>Brands</th><th>Operating days</th><th>Covered</th><th>Short</th><th>Coverage %</th>
           </tr>
         </thead>
         <tbody>
@@ -1607,25 +1629,21 @@ function ProcessesView(props: { result: RosterResult; data: RosterData }) {
               <tr key={pid}>
                 <td>{processLabel(pid)}</td>
                 <td className="muted">{brands.join(', ')}</td>
-                <td>{cov.length}</td>
-                <td>{covered}</td>
-                <td className={bad > 0 ? 'bad-text' : ''}>{bad}</td>
-                <td>{pct}%</td>
+                <td className="tabular">{cov.length}</td>
+                <td className="tabular">{covered}</td>
+                <td className={`tabular ${bad > 0 ? 'bad-text' : ''}`}>{bad}</td>
+                <td className="tabular">{pct}%</td>
               </tr>
             );
           })}
         </tbody>
       </table>
-      <p className="muted small">
-        “Operating days” counts every brand-process day the process had to be staffed.
-        A day counts as covered only when the scheduled headcount meets the brand’s minimum staffing for that process.
-      </p>
     </section>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Item 7: Employees view with Team Workload & Capacity Progress Bars
+// Employees view with Homebase / Planday utilization
 // ---------------------------------------------------------------------------
 
 function EmployeesView(props: {
@@ -1675,14 +1693,11 @@ function EmployeesView(props: {
 
   return (
     <div>
-      {/* Item 7: Workforce Capacity & Utilization Table with Progress Bars */}
       <section className="panel">
         <div className="panel-head">
           <div>
-            <h2>Workforce Capacity &amp; Utilization ({data.employees.length} Staff)</h2>
-            <p className="muted small" style={{ margin: '4px 0 0' }}>
-              Monthly schedule distribution. Reserve floaters handle fewer routine shifts to provide cross-brand backup capacity.
-            </p>
+            <h2 className="panel-title">Workforce utilization ({data.employees.length} staff)</h2>
+            <span className="muted small">Monthly shift and hours distribution across team.</span>
           </div>
         </div>
 
@@ -1692,10 +1707,11 @@ function EmployeesView(props: {
               <tr>
                 <th>Employee</th>
                 <th>Pod</th>
-                <th>Allocated Brands</th>
-                <th>Role Tier</th>
-                <th>Days Worked</th>
-                <th style={{ width: '220px' }}>Monthly Utilization</th>
+                <th>Allocated brands</th>
+                <th>Tier</th>
+                <th>Shifts</th>
+                <th>Hours</th>
+                <th style={{ width: '180px' }}>Capacity</th>
                 <th>Overrides</th>
                 <th>Action</th>
               </tr>
@@ -1704,17 +1720,18 @@ function EmployeesView(props: {
               {data.employees.map((e) => {
                 const empEntries = result.entries.filter((entry) => entry.employeeId === e.id);
                 const daysWorked = empEntries.length;
+                const hoursWorked = daysWorked * 8;
                 const overriddenCount = empEntries.filter((entry) => entry.overriddenOff).length;
                 const totalDays = result.days.length;
                 const pct = Math.round((daysWorked / totalDays) * 100);
 
-                let tierBadge = <span className="chip ok">Core Staff</span>;
+                let tierBadge = <span className="chip ok">Core staff</span>;
                 let barClass = 'bar-ok';
                 if (daysWorked >= 25) {
-                  tierBadge = <span className="chip warn">Heavy Load</span>;
+                  tierBadge = <span className="chip warn">Heavy</span>;
                   barClass = 'bar-warn';
                 } else if (daysWorked < 15) {
-                  tierBadge = <span className="chip slate" title="Cross-brand reserve floater for surge & backup coverage">Reserve Floater</span>;
+                  tierBadge = <span className="chip slate">Reserve</span>;
                   barClass = 'bar-slate';
                 }
 
@@ -1732,36 +1749,31 @@ function EmployeesView(props: {
                     className={`workload-row ${isSelected ? 'row-selected' : ''}`}
                     onClick={() => props.setSelectedEmployee(e.id)}
                   >
-                    <td className="emp-name-cell">
-                      <strong>{e.name}</strong>
-                    </td>
+                    <td><strong>{e.name}</strong></td>
                     <td className="muted">{PODS.find((p) => p.id === e.podId)?.name}</td>
                     <td className="muted small">{brandNames.join(', ')}</td>
                     <td>{tierBadge}</td>
-                    <td>
-                      <strong>{daysWorked}</strong> <span className="muted">/ {totalDays}</span>
-                    </td>
+                    <td className="tabular">{daysWorked}</td>
+                    <td className="tabular">{hoursWorked}h</td>
                     <td>
                       <div className="workload-bar-wrapper">
                         <div className="workload-bar-track">
                           <div className={`workload-bar-fill ${barClass}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                         </div>
-                        <span className="workload-pct">{pct}%</span>
+                        <span className="workload-pct tabular">{pct}%</span>
                       </div>
                     </td>
                     <td>
                       {overriddenCount > 0 ? (
-                        <span className="warn-text" title={`${overriddenCount} weekly-offs overridden`}>
-                          {overriddenCount} <span className="cell-marker warn inline">!</span>
-                        </span>
+                        <span className="warn-text tabular">{overriddenCount} !</span>
                       ) : (
-                        <span className="muted">0</span>
+                        <span className="muted tabular">0</span>
                       )}
                     </td>
                     <td>
                       <button
                         type="button"
-                        className={`btn btn-small ${isSelected ? 'btn-primary' : 'btn-light'}`}
+                        className={`btn btn-small ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
                         onClick={(ev) => {
                           ev.stopPropagation();
                           props.setSelectedEmployee(e.id);
@@ -1778,31 +1790,22 @@ function EmployeesView(props: {
         </div>
       </section>
 
-      {/* Individual Employee Detailed Inspector */}
       <section className="panel">
         <div className="panel-head">
-          <h2>Selected Employee: {emp.name}</h2>
+          <h2 className="panel-title">Selected staff: {emp.name}</h2>
           <select value={emp.id} onChange={(e) => props.setSelectedEmployee(e.target.value)}>
             {data.employees.map((e) => (
               <option key={e.id} value={e.id}>{e.name}</option>
             ))}
           </select>
         </div>
-        <p className="muted">
-          {PODS.find((x) => x.id === emp.podId)?.name} · {myAllocs.length} allocation(s) ·{' '}
-          {myEntries.length} working days this month · {overridden} weekly off(s) overridden
-        </p>
-        <p>
-          <strong>Allocations: </strong>
-          {myAllocs.map((a) => {
-            const b = data.brands.find((x) => x.id === a.brandId);
-            return `${b?.name ?? a.brandId} (${processLabel(a.processId)}, ${a.role})`;
-          }).join(' · ')}
+        <p className="muted small">
+          {PODS.find((x) => x.id === emp.podId)?.name} · <span className="tabular">{myEntries.length}</span> shifts (<span className="tabular">{myEntries.length * 8}h</span>) · <span className="tabular">{overridden}</span> weekly off overrides · Allocations: {myAllocs.map((a) => `${data.brands.find((b) => b.id === a.brandId)?.name ?? a.brandId} (${processLabel(a.processId)}, ${a.role})`).join(' · ')}
         </p>
       </section>
 
       <section className="panel">
-        <h2>Weekly off days (preferences)</h2>
+        <h2 className="panel-title">Weekly off preferences</h2>
         <div className="weekoff-row">
           {WEEKDAYS.map((label, i) => (
             <label key={label} className="check">
@@ -1811,73 +1814,34 @@ function EmployeesView(props: {
                 checked={emp.weeklyOff.includes(i)}
                 onChange={() => toggleWeeklyOff(i)}
               />
-              {label}
+              <span>{label}</span>
             </label>
           ))}
         </div>
-        <p className="muted small">
-          Changing a weekly off re-generates the month. The engine may still schedule the employee
-          on that day if they are the only cover for a brand/process — that override is flagged as a warning.
-        </p>
       </section>
 
       <section className="panel">
-        <h2>Leave &amp; comp-offs</h2>
+        <h2 className="panel-title">Leave and comp-offs</h2>
         <ul className="leave-list">
           {emp.leaves.map((d) => (
             <li key={d}>
-              {d} — leave
+              <span className="tabular">{d}</span> — Planned leave
               {!seedLeaves.includes(d) && (
                 <button className="link-btn" onClick={() => removeLeave(d)}>Remove</button>
               )}
             </li>
           ))}
           {emp.compOffs.map((d) => (
-            <li key={d}>{d} — comp-off</li>
+            <li key={d}><span className="tabular">{d}</span> — Comp-off</li>
           ))}
-          {emp.leaves.length === 0 && emp.compOffs.length === 0 && <li className="muted">None this month.</li>}
+          {emp.leaves.length === 0 && emp.compOffs.length === 0 && <li className="muted">No leaves recorded this month.</li>}
         </ul>
         <div className="sim-row">
           <label>
-            Add leave on
+            <span>Add leave on</span>
             <input type="date" value={newLeave} onChange={(e) => setNewLeave(e.target.value)} />
           </label>
           <button className="btn btn-primary" onClick={addLeave}>Add leave</button>
-        </div>
-      </section>
-
-      <section className="panel">
-        <h2>Month at a glance</h2>
-        <div className="table-scroll">
-          <table className="mini-table">
-            <thead>
-              <tr><th>Date</th><th>Day</th><th>Status</th><th>Assignment</th></tr>
-            </thead>
-            <tbody>
-              {result.days.map((d) => {
-                const entry = myEntries.find((e) => e.date === d);
-                const holiday = isHoliday(d);
-                let status = 'Not scheduled';
-                let cls = 'muted';
-                if (entry) {
-                  status = entry.overriddenOff ? 'Working (weekly off overridden)' : 'Working';
-                  cls = entry.overriddenOff ? 'warn-text' : '';
-                } else if (emp.leaves.includes(d)) { status = 'Leave'; cls = 'bad-text'; }
-                else if (emp.compOffs.includes(d)) { status = 'Comp-off'; cls = 'bad-text'; }
-                else if (holiday) { status = `Public holiday — ${holiday.name}`; }
-                else if (emp.weeklyOff.includes(dayOfWeek(d))) { status = 'Weekly off'; }
-                const brand = entry ? data.brands.find((b) => b.id === entry.brandId) : undefined;
-                return (
-                  <tr key={d}>
-                    <td>{d}</td>
-                    <td>{WEEKDAYS[dayOfWeek(d)]}</td>
-                    <td className={cls}>{status}</td>
-                    <td>{entry ? `${brand?.name ?? ''} — ${entry.processes.map((pid) => processLabel(pid)).join(', ')}` : '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         </div>
       </section>
     </div>
@@ -1909,44 +1873,32 @@ function ConflictsView(props: {
     <section className="panel">
       <div className="panel-head">
         <div>
-          <h2>Conflicts &amp; Validation Diagnosis</h2>
-          <p className="muted small" style={{ margin: '4px 0 0' }}>
-            Isolates mandatory coverage gaps, understaffed brand processes, and soft weekly-off preference overrides.
+          <h2 className="panel-title">Conflicts and validation diagnosis ({props.allConflicts.length})</h2>
+          <p className="muted small" style={{ margin: '2px 0 0' }}>
+            Isolates coverage gaps, understaffed slots, and weekly-off overrides.
           </p>
         </div>
         <div className="filters">
-          <button className={props.filter === 'all' ? 'btn btn-primary' : 'btn'} onClick={() => props.setFilter('all')}>
+          <button className={props.filter === 'all' ? 'btn btn-primary' : 'btn btn-secondary'} onClick={() => props.setFilter('all')}>
             All ({props.allConflicts.length})
           </button>
-          <button className={props.filter === 'error' ? 'btn btn-danger' : 'btn'} onClick={() => props.setFilter('error')}>
+          <button className={props.filter === 'error' ? 'btn btn-danger' : 'btn btn-secondary'} onClick={() => props.setFilter('error')}>
             Errors ({errors})
           </button>
-          <button className={props.filter === 'gap' ? 'btn btn-danger' : 'btn'} onClick={() => props.setFilter('gap')} title="Zero staff scheduled on operating day">
+          <button className={props.filter === 'gap' ? 'btn btn-danger' : 'btn btn-secondary'} onClick={() => props.setFilter('gap')}>
             Gaps ({gaps})
           </button>
-          <button className={props.filter === 'understaffed' ? 'btn btn-warn' : 'btn'} onClick={() => props.setFilter('understaffed')} title="Scheduled staff less than required minStaff">
+          <button className={props.filter === 'understaffed' ? 'btn btn-secondary active-warn' : 'btn btn-secondary'} onClick={() => props.setFilter('understaffed')}>
             Understaffed ({under})
           </button>
-          <button className={props.filter === 'warning' ? 'btn btn-warn' : 'btn'} onClick={() => props.setFilter('warning')}>
+          <button className={props.filter === 'warning' ? 'btn btn-secondary active-warn' : 'btn btn-secondary'} onClick={() => props.setFilter('warning')}>
             Overrides ({warnings})
           </button>
         </div>
       </div>
 
-      <div className="conflict-summary-banner">
-        <strong>Executive Summary:</strong> {props.result.stats.coveredSlots} of {props.result.stats.operatingSlots} operating slots ({props.result.stats.coveragePct}%) are successfully staffed.
-        {errors > 0 ? (
-          <span> {errors} shortage slots are flagged due to approved employee leaves without authorized backup (Scenario A: GlowKart Retention 8–10 Dec; Scenario B: BookBarn 21 Dec) and dual-staffing requirements (TechTrove CS).</span>
-        ) : (
-          <span> All mandatory operational coverage requirements are satisfied.</span>
-        )}
-        {warnings > 0 && (
-          <span> {warnings} weekly-off preferences were overridden to maintain mandatory brand coverage without hard-constraint failures.</span>
-        )}
-      </div>
-
       {conflicts.length === 0 ? (
-        <p className="ok-text" style={{ marginTop: 14 }}>No conflicts in this view. All constraints satisfied.</p>
+        <p className="ok-text" style={{ marginTop: 14 }}>No coverage gaps in December 2026. All operational rules satisfied.</p>
       ) : (
         <ul className="conflict-list" style={{ marginTop: 14 }}>
           {conflicts.map((c) => (
@@ -1954,38 +1906,28 @@ function ConflictsView(props: {
               <div className="conflict-main">
                 <span className={`severity ${c.severity}`}>{c.severity === 'error' ? 'Error' : 'Warning'}</span>
                 <span className="conflict-type-badge">{c.type}</span>
-                <span className="conflict-date">{c.date}</span>
+                <span className="conflict-date tabular">{c.date}</span>
                 <p>{c.message}</p>
                 {c.suggestion && <p className="muted small">{c.suggestion}</p>}
               </div>
               {c.brandId && c.processId && (
                 <div>
                   <button
-                    className="btn btn-small"
+                    className="btn btn-small btn-secondary"
                     onClick={() => props.setBackupFor(props.backupFor === c.id ? null : c.id)}
                   >
                     {props.backupFor === c.id ? 'Hide backup' : 'Find backup'}
                   </button>
                   {props.backupFor === c.id && (
-                    <div style={{ marginTop: 8 }}>
-                      <BackupList
-                        data={props.data}
-                        result={props.result}
-                        date={c.date}
-                        brandId={c.brandId}
-                        processId={c.processId}
-                        excludeEmployeeId={c.employeeId}
-                      />
-                      {/* One-click apply backup */}
+                    <div className="backup-box" style={{ marginTop: 8 }}>
                       {findBackup(props.data, props.result, c.date, c.brandId, c.processId, c.employeeId).slice(0, 1).map((cand) => (
                         <button
                           key={cand.employeeId}
                           type="button"
                           className="btn btn-small btn-primary"
-                          style={{ marginTop: 6 }}
                           onClick={() => props.onAssignBackup(cand.employeeId, c.brandId!, c.processId!)}
                         >
-                          + Assign {cand.name.split(' ')[0]} as Backup
+                          + Assign {cand.name.split(' ')[0]} as backup
                         </button>
                       ))}
                     </div>

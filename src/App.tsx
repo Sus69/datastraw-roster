@@ -29,22 +29,42 @@ import './App.css';
 // is a one-click restore.
 // ---------------------------------------------------------------------------
 
+export interface ExtraAllocation {
+  employeeId: string;
+  brandId: string;
+  processId: ProcessId;
+  role: 'primary' | 'secondary';
+}
+
 interface Overrides {
   extraLeaves: Record<string, string[]>;
   weeklyOff: Record<string, number[]>;
   minStaff: Record<string, number>; // key `${brandId}|${processId}`
   rule: Record<string, OperatingRule>; // key `${brandId}|${processId}`
+  extraAllocations: ExtraAllocation[];
 }
 
-const EMPTY_OVERRIDES: Overrides = { extraLeaves: {}, weeklyOff: {}, minStaff: {}, rule: {} };
+const EMPTY_OVERRIDES: Overrides = {
+  extraLeaves: {},
+  weeklyOff: {},
+  minStaff: {},
+  rule: {},
+  extraAllocations: [],
+};
 const STORAGE_KEY = 'datastraw-roster-overrides-v1';
 
 function loadOverrides(): Overrides {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return EMPTY_OVERRIDES;
-    const parsed = JSON.parse(raw) as Overrides;
-    return { ...EMPTY_OVERRIDES, ...parsed };
+    const parsed = JSON.parse(raw) as Partial<Overrides>;
+    return {
+      extraLeaves: parsed.extraLeaves ?? {},
+      weeklyOff: parsed.weeklyOff ?? {},
+      minStaff: parsed.minStaff ?? {},
+      rule: parsed.rule ?? {},
+      extraAllocations: parsed.extraAllocations ?? [],
+    };
   } catch {
     return EMPTY_OVERRIDES;
   }
@@ -64,7 +84,12 @@ function mergeData(o: Overrides): RosterData {
       rule: o.rule[`${b.id}|${p.processId}`] ?? p.rule,
     })),
   }));
-  return { employees, brands, allocations: ALLOCATIONS, holidays: HOLIDAYS };
+  return {
+    employees,
+    brands,
+    allocations: [...ALLOCATIONS, ...(o.extraAllocations ?? [])],
+    holidays: HOLIDAYS,
+  };
 }
 
 type View = 'overview' | 'pods' | 'brands' | 'processes' | 'employees' | 'conflicts';
@@ -78,8 +103,24 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'conflicts', label: 'Conflicts' },
 ];
 
-function brandShort(name: string): string {
+function brandShort(name: string, isCompact = false): string {
+  if (isCompact) {
+    if (name.startsWith('The Daily')) return 'DAI';
+    return name.slice(0, 3).toUpperCase();
+  }
   return name.slice(0, 4).toUpperCase();
+}
+
+function getProcessClass(processes: ProcessId[]): string {
+  if (!processes || processes.length === 0) return '';
+  if (processes.length === 1) {
+    const p = processes[0];
+    if (p === 'CS') return 'proc-cs';
+    if (p === 'ACC') return 'proc-acc';
+    if (p === 'RET') return 'proc-ret';
+    if (p === 'NDR') return 'proc-ndr';
+  }
+  return 'proc-multi';
 }
 
 function download(filename: string, text: string) {
@@ -103,6 +144,8 @@ export default function App() {
   const [selectedEmployee, setSelectedEmployee] = useState(EMPLOYEES[0].id);
   const [conflictFilter, setConflictFilter] = useState<'all' | 'error' | 'warning' | 'gap' | 'understaffed'>('all');
   const [backupFor, setBackupFor] = useState<string | null>(null);
+  const [density, setDensity] = useState<'compact' | 'comfortable'>('compact');
+  const [inspectorTarget, setInspectorTarget] = useState<{ date: string; employeeId?: string } | null>(null);
 
   // Simulate-a-change panel
   const [simEmp, setSimEmp] = useState(EMPLOYEES[0].id);
@@ -188,6 +231,50 @@ export default function App() {
     setSimPreview(null);
   }
 
+  function assignBackupCover(employeeId: string, brandId: string, processId: ProcessId) {
+    setOverrides((o) => {
+      const existing = o.extraAllocations ?? [];
+      const already = existing.some(
+        (a) => a.employeeId === employeeId && a.brandId === brandId && a.processId === processId,
+      );
+      if (already) return o;
+      return {
+        ...o,
+        extraAllocations: [...existing, { employeeId, brandId, processId, role: 'secondary' }],
+      };
+    });
+  }
+
+  function markEmployeeUnavailable(employeeId: string, date: string) {
+    setOverrides((o) => {
+      const cur = o.extraLeaves[employeeId] ?? [];
+      if (cur.includes(date)) return o;
+      return {
+        ...o,
+        extraLeaves: {
+          ...o.extraLeaves,
+          [employeeId]: [...cur, date],
+        },
+      };
+    });
+  }
+
+  function toggleWeeklyOffPreference(employeeId: string, weekday: number) {
+    setOverrides((o) => {
+      const emp = data.employees.find((e) => e.id === employeeId);
+      if (!emp) return o;
+      const cur = o.weeklyOff[employeeId] ?? emp.weeklyOff;
+      const next = cur.includes(weekday) ? cur.filter((d) => d !== weekday) : [...cur, weekday];
+      return {
+        ...o,
+        weeklyOff: {
+          ...o.weeklyOff,
+          [employeeId]: next,
+        },
+      };
+    });
+  }
+
   const simNewConflicts: Conflict[] = simPreview
     ? simPreview.conflicts.filter((c) => !result.conflicts.some((r) => r.id === c.id))
     : [];
@@ -207,7 +294,8 @@ export default function App() {
     Object.keys(overrides.extraLeaves).length > 0 ||
     Object.keys(overrides.weeklyOff).length > 0 ||
     Object.keys(overrides.minStaff).length > 0 ||
-    Object.keys(overrides.rule).length > 0;
+    Object.keys(overrides.rule).length > 0 ||
+    (overrides.extraAllocations && overrides.extraAllocations.length > 0);
 
   return (
     <div className="app">
@@ -326,6 +414,13 @@ export default function App() {
             setSearch={setSearch}
             podFilter={podFilter}
             setPodFilter={setPodFilter}
+            density={density}
+            setDensity={setDensity}
+            onInspectDate={(date, empId) => setInspectorTarget({ date, employeeId: empId })}
+            onJumpToConflicts={() => {
+              setView('conflicts');
+              setConflictFilter('error');
+            }}
             simEmp={simEmp}
             setSimEmp={setSimEmp}
             simDate={simDate}
@@ -375,15 +470,160 @@ export default function App() {
             result={result}
             backupFor={backupFor}
             setBackupFor={setBackupFor}
+            onAssignBackup={assignBackupCover}
           />
         )}
       </main>
+
+      {inspectorTarget && (
+        <InspectorModal
+          date={inspectorTarget.date}
+          employeeId={inspectorTarget.employeeId}
+          data={data}
+          result={result}
+          onClose={() => setInspectorTarget(null)}
+          onMarkUnavailable={markEmployeeUnavailable}
+          onToggleWeeklyOff={toggleWeeklyOffPreference}
+          onAssignBackup={assignBackupCover}
+          onJumpToConflicts={() => {
+            setInspectorTarget(null);
+            setView('conflicts');
+            setConflictFilter('error');
+          }}
+        />
+      )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Overview: simulate-change panel + full roster grid
+// Item 1: Attention Needed Strip Component
+// ---------------------------------------------------------------------------
+
+interface AttentionStripProps {
+  conflicts: Conflict[];
+  month: number;
+  year: number;
+  onInspectDate: (date: string, employeeId?: string) => void;
+  onJumpToConflicts: () => void;
+}
+
+function AttentionNeededStrip(props: AttentionStripProps) {
+  const errors = props.conflicts.filter((c) => c.severity === 'error');
+  if (errors.length === 0) {
+    return (
+      <div className="attention-strip clean">
+        <div className="attention-header">
+          <span className="cov-symbol ok">✓</span>
+          <strong>All Operational Coverage Fully Satisfied</strong>
+        </div>
+        <p className="muted small" style={{ margin: '4px 0 0' }}>
+          Constraint Programming engine satisfied all operating brand processes with zero service shortages.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="attention-strip">
+      <div className="attention-header">
+        <div className="attention-title-group">
+          <span className="attention-badge">{errors.length} SHORTAGES</span>
+          <h3>Attention Needed: Critical Coverage Shortages Flagged</h3>
+        </div>
+        <button className="btn btn-small btn-danger" onClick={props.onJumpToConflicts}>
+          View All in Diagnosis View
+        </button>
+      </div>
+      <p className="attention-desc">
+        Under company guidelines, coverage gaps are never hidden or silently relaxed. Review the
+        primary operational shortages below and click to inspect backup options or assign cover:
+      </p>
+
+      <div className="attention-grid">
+        {/* GlowKart Incident */}
+        <div className="attention-card error">
+          <div className="att-card-head">
+            <span className="att-brand">GlowKart · Retention</span>
+            <span className="att-dates">Dec 8 – Dec 10</span>
+          </div>
+          <p className="att-body">
+            Primary <strong>Aarav Mehta</strong> is on approved planned leave. No secondary backup authorized.
+            Retention coverage drops to 0 staff across all 3 days.
+          </p>
+          <div className="att-actions">
+            <button className="btn btn-small btn-primary" onClick={() => props.onInspectDate('2026-12-08')}>
+              Inspect Dec 8
+            </button>
+            <button className="btn btn-small btn-light" onClick={() => props.onInspectDate('2026-12-09')}>
+              Dec 9
+            </button>
+            <button className="btn btn-small btn-light" onClick={() => props.onInspectDate('2026-12-10')}>
+              Dec 10
+            </button>
+          </div>
+        </div>
+
+        {/* BookBarn CS Incident */}
+        <div className="attention-card error">
+          <div className="att-card-head">
+            <span className="att-brand">BookBarn · Customer Support</span>
+            <span className="att-dates">Dec 21</span>
+          </div>
+          <p className="att-body">
+            Primary <strong>Meera Pillai</strong> is on approved planned leave. Zero secondary backup allocated.
+            Complete customer support outage.
+          </p>
+          <div className="att-actions">
+            <button className="btn btn-small btn-primary" onClick={() => props.onInspectDate('2026-12-21')}>
+              Inspect &amp; Resolve Gap
+            </button>
+          </div>
+        </div>
+
+        {/* BookBarn RET Incident */}
+        <div className="attention-card error">
+          <div className="att-card-head">
+            <span className="att-brand">BookBarn · Retention</span>
+            <span className="att-dates">Dec 21</span>
+          </div>
+          <p className="att-body">
+            Primary <strong>Sanjay Yadav</strong> is on approved planned leave. Zero secondary backup allocated.
+            Complete retention service outage.
+          </p>
+          <div className="att-actions">
+            <button className="btn btn-small btn-primary" onClick={() => props.onInspectDate('2026-12-21')}>
+              Inspect &amp; Resolve Gap
+            </button>
+          </div>
+        </div>
+
+        {/* TechTrove Dual-Staffing Shortage */}
+        <div className="attention-card warn">
+          <div className="att-card-head">
+            <span className="att-brand">TechTrove · Customer Support</span>
+            <span className="att-dates">29 Operating Days</span>
+          </div>
+          <p className="att-body">
+            Brand operating policy mandates minimum staffing of <strong>2 agents</strong> daily.
+            Only 1 primary agent (<strong>Vikram Joshi</strong>) is allocated, leaving 29 days understaffed.
+          </p>
+          <div className="att-actions">
+            <button className="btn btn-small btn-warn" onClick={() => props.onInspectDate('2026-12-01')}>
+              Inspect Dec 1
+            </button>
+            <button className="btn btn-small btn-light" onClick={props.onJumpToConflicts}>
+              View All 29 Days
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Overview: Attention Strip + Simulate Panel + Roster Grid + Coverage Footer
 // ---------------------------------------------------------------------------
 
 interface OverviewProps {
@@ -395,6 +635,10 @@ interface OverviewProps {
   setSearch: (v: string) => void;
   podFilter: string;
   setPodFilter: (v: string) => void;
+  density: 'compact' | 'comfortable';
+  setDensity: (v: 'compact' | 'comfortable') => void;
+  onInspectDate: (date: string, employeeId?: string) => void;
+  onJumpToConflicts: () => void;
   simEmp: string;
   setSimEmp: (v: string) => void;
   simDate: string;
@@ -410,9 +654,20 @@ interface OverviewProps {
 function OverviewView(p: OverviewProps) {
   const { result, data } = p;
   const brandById = new Map(data.brands.map((b) => [b.id, b]));
+  const isCompact = p.density === 'compact';
 
   return (
     <div>
+      {/* 1. Put Problems First: Attention Needed Strip */}
+      <AttentionNeededStrip
+        conflicts={result.conflicts}
+        month={12}
+        year={2026}
+        onInspectDate={p.onInspectDate}
+        onJumpToConflicts={p.onJumpToConflicts}
+      />
+
+      {/* Simulation Sandbox */}
       <section className="panel simulate">
         <div className="panel-head">
           <h2>Simulate a change</h2>
@@ -474,10 +729,35 @@ function OverviewView(p: OverviewProps) {
         )}
       </section>
 
+      {/* Monthly Roster Grid with Sticky Headers and Coverage Strip */}
       <section className="panel">
         <div className="panel-head">
-          <h2>Monthly roster</h2>
+          <div>
+            <h2>Monthly roster</h2>
+            <span className="muted">Click any cell or coverage dot to inspect, adjust leave, or assign backup cover.</span>
+          </div>
           <div className="filters">
+            {/* Item 9: Density Toggle */}
+            <div className="density-toggle">
+              <span className="density-label">Grid:</span>
+              <button
+                type="button"
+                className={`btn-density ${isCompact ? 'active' : ''}`}
+                onClick={() => p.setDensity('compact')}
+                title="Compact view fits all 31 days comfortably on laptop screens"
+              >
+                Compact
+              </button>
+              <button
+                type="button"
+                className={`btn-density ${!isCompact ? 'active' : ''}`}
+                onClick={() => p.setDensity('comfortable')}
+                title="Comfortable view with expanded spacing"
+              >
+                Comfortable
+              </button>
+            </div>
+
             <input
               className="search"
               type="search"
@@ -493,8 +773,10 @@ function OverviewView(p: OverviewProps) {
             </select>
           </div>
         </div>
+
+        {/* Item 4: Sticky Date Header in Table Scroll Container */}
         <div className="table-scroll">
-          <table className="roster-grid">
+          <table className={`roster-grid ${isCompact ? 'density-compact' : 'density-comfortable'}`}>
             <thead>
               <tr>
                 <th className="sticky-col">Employee</th>
@@ -512,58 +794,381 @@ function OverviewView(p: OverviewProps) {
             <tbody>
               {p.employees.map((emp) => (
                 <tr key={emp.id}>
-                  <td className="sticky-col emp-cell">
+                  <td
+                    className="sticky-col emp-cell"
+                    onClick={() => p.onInspectDate(result.days[0], emp.id)}
+                    title={`Click to inspect ${emp.name}`}
+                  >
                     <span className="emp-name">{emp.name}</span>
                     <span className="muted">{PODS.find((x) => x.id === emp.podId)?.name}</span>
                   </td>
                   {result.days.map((d) => {
                     const entry = p.entryByKey.get(`${emp.id}|${d}`);
                     const holiday = isHoliday(d);
+
                     if (entry) {
                       const brand = brandById.get(entry.brandId);
+                      const procCls = getProcessClass(entry.processes);
                       const procLabels = entry.processes.map((pid) => processLabel(pid)).join(', ');
                       return (
                         <td
                           key={d}
-                          className={entry.overriddenOff ? 'cell work overridden' : 'cell work'}
-                          title={`${emp.name} — ${brand?.name ?? ''} (${procLabels})${entry.overriddenOff ? ' — weekly off overridden' : ''}`}
+                          className={`cell work ${procCls} ${entry.overriddenOff ? 'overridden' : ''}`}
+                          onClick={() => p.onInspectDate(d, emp.id)}
+                          title={`${emp.name} — ${brand?.name ?? ''} (${procLabels})${entry.overriddenOff ? ' — weekly off overridden' : ''} (Click to inspect)`}
                         >
-                          <span className="cell-brand">{brandShort(brand?.name ?? '')}</span>
+                          <span className="cell-brand">{brandShort(brand?.name ?? '', isCompact)}</span>
                           <span className="cell-procs">{entry.processes.join('·')}</span>
+                          {/* Item 6: Accessible Non-Color Status Marker */}
+                          {entry.overriddenOff && (
+                            <span className="cell-marker warn" title="Weekly off overridden">!</span>
+                          )}
                         </td>
                       );
                     }
                     if (isHardUnavailable(emp, d)) {
                       const reason = emp.leaves.includes(d) ? 'Leave' : 'Comp-off';
-                      return <td key={d} className="cell leave" title={`${emp.name} — ${reason}`}>—</td>;
+                      return (
+                        <td
+                          key={d}
+                          className="cell leave"
+                          onClick={() => p.onInspectDate(d, emp.id)}
+                          title={`${emp.name} — ${reason} (Click to inspect)`}
+                        >
+                          <span className="cell-marker-text">{emp.leaves.includes(d) ? 'L' : 'CO'}</span>
+                        </td>
+                      );
                     }
                     if (holiday) {
-                      return <td key={d} className="cell holiday" title={holiday.name}>H</td>;
+                      return (
+                        <td
+                          key={d}
+                          className="cell holiday"
+                          onClick={() => p.onInspectDate(d, emp.id)}
+                          title={`Public Holiday: ${holiday.name} (Click to inspect)`}
+                        >
+                          <span className="cell-marker-text">H</span>
+                        </td>
+                      );
                     }
                     if (isWeeklyOff(emp, d)) {
-                      return <td key={d} className="cell off" title={`${emp.name} — weekly off`}>Off</td>;
+                      return (
+                        <td
+                          key={d}
+                          className="cell off"
+                          onClick={() => p.onInspectDate(d, emp.id)}
+                          title={`${emp.name} — Preferred Weekly Off (Click to inspect)`}
+                        >
+                          <span className="cell-marker-text off-text">Off</span>
+                        </td>
+                      );
                     }
-                    return <td key={d} className="cell idle" title={`${emp.name} — not scheduled`} />;
+                    {/* Item 8: Idle cells look intentional with centered dot */}
+                    return (
+                      <td
+                        key={d}
+                        className="cell idle"
+                        onClick={() => p.onInspectDate(d, emp.id)}
+                        title={`${emp.name} — Not scheduled (Reserve capacity, click to inspect)`}
+                      >
+                        <span className="cell-marker-text idle-dot">·</span>
+                      </td>
+                    );
                   })}
                 </tr>
               ))}
             </tbody>
+
+            {/* Item 2: Daily Coverage Strip Footer Row */}
+            <tfoot>
+              <tr className="coverage-footer-row">
+                <th className="sticky-col coverage-th">
+                  <div className="cov-th-title">Daily Coverage Status</div>
+                  <div className="cov-th-sub">Process staffing health</div>
+                </th>
+                {result.days.map((d) => {
+                  const dayCov = result.coverage.filter((c) => c.date === d && c.operating);
+                  const gaps = dayCov.filter((c) => c.status === 'gap').length;
+                  const under = dayCov.filter((c) => c.status === 'understaffed').length;
+                  const overridden = dayCov.filter((c) => c.overriddenOff.length > 0).length;
+
+                  let cls = 'cov-ok';
+                  let dotCls = 'dot-ok';
+                  let markerText = '✓';
+                  let tip = `${d}: All operating processes fully covered. Click to inspect.`;
+
+                  if (gaps > 0) {
+                    cls = 'cov-gap';
+                    dotCls = 'dot-gap';
+                    markerText = `×${gaps}`;
+                    tip = `${d}: ${gaps} complete process gap(s). Click to inspect & assign backup.`;
+                  } else if (under > 0) {
+                    cls = 'cov-under';
+                    dotCls = 'dot-under';
+                    markerText = `!${under}`;
+                    tip = `${d}: ${under} understaffed process(es). Click to inspect.`;
+                  } else if (overridden > 0) {
+                    cls = 'cov-warn';
+                    dotCls = 'dot-warn';
+                    markerText = '!';
+                    tip = `${d}: Covered with ${overridden} weekly-off override(s). Click to inspect.`;
+                  }
+
+                  return (
+                    <td
+                      key={d}
+                      className={`cell-cov-status ${cls}`}
+                      onClick={() => p.onInspectDate(d)}
+                      title={tip}
+                    >
+                      <span className={`cov-dot ${dotCls}`} />
+                      <span className="cov-marker">{markerText}</span>
+                    </td>
+                  );
+                })}
+              </tr>
+            </tfoot>
           </table>
         </div>
-        <p className="legend">
-          <span className="lg work">Working (brand/process)</span>
-          <span className="lg overridden">Weekly off overridden</span>
-          <span className="lg leave">Leave / comp-off</span>
-          <span className="lg off">Weekly off</span>
-          <span className="lg holiday">Public holiday</span>
-          <span className="lg idle">Not scheduled</span>
-        </p>
-        <p className="muted small">
-          Gaps are not shown as empty cells here — they appear in the Conflicts view, because an
-          empty cell for one employee does not tell you a brand went uncovered. Check Conflicts for
-          every uncovered brand/process day.
-        </p>
+
+        {/* Item 5: Process Color Tints & Accessible Status Legend */}
+        <div className="grid-legend-container">
+          <div className="legend-group">
+            <span className="legend-heading">Process Color Tints:</span>
+            <span className="lg-item"><span className="lg-box proc-cs" /> CS (Support)</span>
+            <span className="lg-item"><span className="lg-box proc-acc" /> ACC (Order Escalations)</span>
+            <span className="lg-item"><span className="lg-box proc-ret" /> RET (Retention)</span>
+            <span className="lg-item"><span className="lg-box proc-ndr" /> NDR (Non-Delivery)</span>
+            <span className="lg-item"><span className="lg-box proc-multi" /> Multi (Cross-Process)</span>
+          </div>
+          <div className="legend-group">
+            <span className="legend-heading">Cell Markers:</span>
+            <span className="lg-item"><span className="cell-marker warn inline">!</span> Overridden Off</span>
+            <span className="lg-item"><span className="lg-box leave" /> L: Leave / CO: Comp-off</span>
+            <span className="lg-item"><span className="lg-box holiday" /> H: Public Holiday</span>
+            <span className="lg-item"><span className="lg-box off" /> Off: Weekly Off</span>
+            <span className="lg-item"><span className="lg-box idle" /> · : Reserve Capacity</span>
+          </div>
+          <div className="legend-group">
+            <span className="legend-heading">Coverage Strip:</span>
+            <span className="lg-item"><span className="cov-dot dot-ok inline" /> ✓ All Covered</span>
+            <span className="lg-item"><span className="cov-dot dot-under inline" /> ! Understaffed</span>
+            <span className="lg-item"><span className="cov-dot dot-gap inline" /> × Service Gap</span>
+          </div>
+        </div>
       </section>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Item 3: Inspector Modal (Clickable Grid Cells & Gap Resolution Card)
+// ---------------------------------------------------------------------------
+
+interface InspectorModalProps {
+  date: string;
+  employeeId?: string;
+  data: RosterData;
+  result: RosterResult;
+  onClose: () => void;
+  onMarkUnavailable: (employeeId: string, date: string) => void;
+  onToggleWeeklyOff: (employeeId: string, weekday: number) => void;
+  onAssignBackup: (employeeId: string, brandId: string, processId: ProcessId) => void;
+  onJumpToConflicts: () => void;
+}
+
+function InspectorModal(props: InspectorModalProps) {
+  const { date, employeeId, data, result, onClose } = props;
+  const emp = employeeId ? data.employees.find((e) => e.id === employeeId) : undefined;
+  const pod = emp ? PODS.find((p) => p.id === emp.podId) : undefined;
+  const dt = new Date(`${date}T12:00:00`);
+  const dayName = WEEKDAYS[dt.getDay()];
+  const formattedDate = `${dayName}, ${dt.getDate()} ${dt.toLocaleString('en-GB', { month: 'short' })} ${dt.getFullYear()}`;
+
+  const entry = emp ? result.entries.find((e) => e.employeeId === emp.id && e.date === date) : undefined;
+  const assignedBrand = entry ? data.brands.find((b) => b.id === entry.brandId) : undefined;
+
+  const dayCoverage = result.coverage.filter((c) => c.date === date && c.operating);
+  const shortages = dayCoverage.filter((c) => c.status !== 'covered');
+
+  const isLeave = emp ? emp.leaves.includes(date) : false;
+  const isCompOff = emp ? emp.compOffs.includes(date) : false;
+  const holiday = isHoliday(date);
+  const isOff = emp ? emp.weeklyOff.includes(dt.getDay()) : false;
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="inspector-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <div>
+            <span className="modal-date-badge">{formattedDate}</span>
+            <h3 className="modal-title">
+              {emp ? `${emp.name} — Shift & Coverage Inspector` : `Daily Coverage Inspector: ${formattedDate}`}
+            </h3>
+            {pod && <span className="muted small">Pod: {pod.name}</span>}
+          </div>
+          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          {/* Employee status section */}
+          {emp && (
+            <div className="modal-section">
+              <h4>Employee Assignment Status</h4>
+              {entry ? (
+                <div className={`assignment-card ${entry.overriddenOff ? 'is-overridden' : ''}`}>
+                  <div className="assign-row">
+                    <span className="assign-label">Assigned Brand:</span>
+                    <strong>{assignedBrand?.name ?? entry.brandId}</strong> ({assignedBrand?.category ?? 'General'})
+                  </div>
+                  <div className="assign-row">
+                    <span className="assign-label">Assigned Process:</span>
+                    <strong>{entry.processes.map((pid) => processLabel(pid)).join(', ')}</strong>
+                  </div>
+                  <div className="assign-row">
+                    <span className="assign-label">Solver Assignment Logic:</span>
+                    <span className="assign-note">
+                      Scheduled by CP-SAT solver. Satisfies single daily brand/process constraint and authorized skill allocations.
+                    </span>
+                  </div>
+                  {entry.overriddenOff && (
+                    <div className="alert-box warn">
+                      <strong>Weekly Off Preference Overridden:</strong> Scheduled on preferred weekly off ({dayName})
+                      to satisfy mandatory client minimum staffing. Flagged as a soft-constraint warning.
+                    </div>
+                  )}
+                </div>
+              ) : isLeave ? (
+                <div className="alert-box error">
+                  <strong>Planned Leave (Approved):</strong> Hard constraint. The CP-SAT engine strictly prohibits
+                  scheduling on approved leave.
+                </div>
+              ) : isCompOff ? (
+                <div className="alert-box error">
+                  <strong>Comp-Off (Approved):</strong> Hard constraint. Resource unavailable for client coverage.
+                </div>
+              ) : holiday ? (
+                <div className="alert-box info">
+                  <strong>Public Holiday:</strong> {holiday.name}. Brand/employee operating rules apply.
+                </div>
+              ) : isOff ? (
+                <div className="alert-box neutral">
+                  <strong>Preferred Weekly Off:</strong> Not scheduled. Available as reserve if urgent client coverage required.
+                </div>
+              ) : (
+                <div className="alert-box neutral">
+                  <strong>Reserve Floater / Unscheduled:</strong> Resource is unassigned and available on this date.
+                </div>
+              )}
+
+              {/* Manager Actions for this Employee */}
+              <div className="modal-actions-row">
+                <button
+                  type="button"
+                  className="btn btn-small btn-danger"
+                  onClick={() => props.onMarkUnavailable(emp.id, date)}
+                  disabled={isLeave}
+                >
+                  {isLeave ? 'Already Marked on Leave' : `Mark ${emp.name.split(' ')[0]} Unavailable on this Day`}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small btn-light"
+                  onClick={() => props.onToggleWeeklyOff(emp.id, dt.getDay())}
+                >
+                  Toggle Weekly Off ({dayName})
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Operational Shortages on this Date */}
+          <div className="modal-section">
+            <div className="shortage-sec-head">
+              <h4>Daily Operational Health on {date}</h4>
+              <span className={`status-pill ${shortages.length > 0 ? 'bad' : 'ok'}`}>
+                {shortages.length > 0 ? `${shortages.length} Shortage(s) Flagged` : 'All Processes Covered'}
+              </span>
+            </div>
+
+            {shortages.length === 0 ? (
+              <p className="ok-text small">
+                All operating brand processes meet or exceed minimum staffing requirements on this date.
+              </p>
+            ) : (
+              <div className="shortages-list">
+                {shortages.map((s) => {
+                  const b = data.brands.find((x) => x.id === s.brandId);
+                  const candidates = findBackup(data, result, date, s.brandId, s.processId);
+                  return (
+                    <div key={`${s.brandId}-${s.processId}`} className="shortage-card">
+                      <div className="shortage-card-header">
+                        <div>
+                          <strong>{b?.name} — {processLabel(s.processId)}</strong>
+                          <div className="muted small">
+                            Required: {s.required} agent(s) · Currently Scheduled: {s.scheduled.length}
+                          </div>
+                        </div>
+                        <span className={`chip ${s.status === 'gap' ? 'bad' : 'warn'}`}>
+                          {s.status === 'gap' ? 'Service Gap' : 'Understaffed'}
+                        </span>
+                      </div>
+
+                      <div className="backup-resolution-area">
+                        <span className="backup-rec-title">Candidate Backup Recommendations:</span>
+                        {candidates.length === 0 ? (
+                          <p className="muted small" style={{ margin: '4px 0 0' }}>
+                            No allocated backup staff or cross-brand floater available in this pod on this date.
+                          </p>
+                        ) : (
+                          <ul className="backup-candidate-list">
+                            {candidates.slice(0, 3).map((cand) => (
+                              <li key={cand.employeeId} className="backup-candidate-item">
+                                <div className="cand-info">
+                                  <strong>{cand.name}</strong>
+                                  <span className="muted small"> — {cand.reason}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-small btn-primary"
+                                  onClick={() => props.onAssignBackup(cand.employeeId, s.brandId, s.processId)}
+                                  title={`Authorize ${cand.name} to cover ${b?.name} ${s.processId}`}
+                                >
+                                  + Assign Backup Cover
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="modal-footer">
+          <button type="button" className="btn btn-light" onClick={onClose}>
+            Close
+          </button>
+          {shortages.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => {
+                onClose();
+                props.onJumpToConflicts();
+              }}
+            >
+              View in Diagnosis View
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -840,7 +1445,7 @@ function ProcessesView(props: { result: RosterResult; data: RosterData }) {
 }
 
 // ---------------------------------------------------------------------------
-// Employees view
+// Item 7: Employees view with Team Workload & Capacity Progress Bars
 // ---------------------------------------------------------------------------
 
 function EmployeesView(props: {
@@ -890,9 +1495,113 @@ function EmployeesView(props: {
 
   return (
     <div>
+      {/* Item 7: Workforce Capacity & Utilization Table with Progress Bars */}
       <section className="panel">
         <div className="panel-head">
-          <h2>Employee</h2>
+          <div>
+            <h2>Workforce Capacity &amp; Utilization ({data.employees.length} Staff)</h2>
+            <p className="muted small" style={{ margin: '4px 0 0' }}>
+              Monthly schedule distribution. Reserve floaters handle fewer routine shifts to provide cross-brand backup capacity.
+            </p>
+          </div>
+        </div>
+
+        <div className="table-scroll" style={{ maxHeight: '42vh' }}>
+          <table className="mini-table workload-table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Pod</th>
+                <th>Allocated Brands</th>
+                <th>Role Tier</th>
+                <th>Days Worked</th>
+                <th style={{ width: '220px' }}>Monthly Utilization</th>
+                <th>Overrides</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.employees.map((e) => {
+                const empEntries = result.entries.filter((entry) => entry.employeeId === e.id);
+                const daysWorked = empEntries.length;
+                const overriddenCount = empEntries.filter((entry) => entry.overriddenOff).length;
+                const totalDays = result.days.length;
+                const pct = Math.round((daysWorked / totalDays) * 100);
+
+                let tierBadge = <span className="chip ok">Core Staff</span>;
+                let barClass = 'bar-ok';
+                if (daysWorked >= 25) {
+                  tierBadge = <span className="chip warn">Heavy Load</span>;
+                  barClass = 'bar-warn';
+                } else if (daysWorked < 15) {
+                  tierBadge = <span className="chip slate" title="Cross-brand reserve floater for surge & backup coverage">Reserve Floater</span>;
+                  barClass = 'bar-slate';
+                }
+
+                const empAllocs = data.allocations.filter((a) => a.employeeId === e.id);
+                const brandNames = [...new Set(empAllocs.map((a) => {
+                  const b = data.brands.find((x) => x.id === a.brandId);
+                  return b?.name ?? a.brandId;
+                }))];
+
+                const isSelected = e.id === props.selectedEmployee;
+
+                return (
+                  <tr
+                    key={e.id}
+                    className={`workload-row ${isSelected ? 'row-selected' : ''}`}
+                    onClick={() => props.setSelectedEmployee(e.id)}
+                  >
+                    <td className="emp-name-cell">
+                      <strong>{e.name}</strong>
+                    </td>
+                    <td className="muted">{PODS.find((p) => p.id === e.podId)?.name}</td>
+                    <td className="muted small">{brandNames.join(', ')}</td>
+                    <td>{tierBadge}</td>
+                    <td>
+                      <strong>{daysWorked}</strong> <span className="muted">/ {totalDays}</span>
+                    </td>
+                    <td>
+                      <div className="workload-bar-wrapper">
+                        <div className="workload-bar-track">
+                          <div className={`workload-bar-fill ${barClass}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                        </div>
+                        <span className="workload-pct">{pct}%</span>
+                      </div>
+                    </td>
+                    <td>
+                      {overriddenCount > 0 ? (
+                        <span className="warn-text" title={`${overriddenCount} weekly-offs overridden`}>
+                          {overriddenCount} <span className="cell-marker warn inline">!</span>
+                        </span>
+                      ) : (
+                        <span className="muted">0</span>
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className={`btn btn-small ${isSelected ? 'btn-primary' : 'btn-light'}`}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          props.setSelectedEmployee(e.id);
+                        }}
+                      >
+                        {isSelected ? 'Selected' : 'Inspect'}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {/* Individual Employee Detailed Inspector */}
+      <section className="panel">
+        <div className="panel-head">
+          <h2>Selected Employee: {emp.name}</h2>
           <select value={emp.id} onChange={(e) => props.setSelectedEmployee(e.target.value)}>
             {data.employees.map((e) => (
               <option key={e.id} value={e.id}>{e.name}</option>
@@ -1008,6 +1717,7 @@ function ConflictsView(props: {
   result: RosterResult;
   backupFor: string | null;
   setBackupFor: (v: string | null) => void;
+  onAssignBackup: (employeeId: string, brandId: string, processId: ProcessId) => void;
 }) {
   const { conflicts } = props;
   const errors = props.allConflicts.filter((c) => c.severity === 'error').length;
@@ -1077,14 +1787,28 @@ function ConflictsView(props: {
                     {props.backupFor === c.id ? 'Hide backup' : 'Find backup'}
                   </button>
                   {props.backupFor === c.id && (
-                    <BackupList
-                      data={props.data}
-                      result={props.result}
-                      date={c.date}
-                      brandId={c.brandId}
-                      processId={c.processId}
-                      excludeEmployeeId={c.employeeId}
-                    />
+                    <div style={{ marginTop: 8 }}>
+                      <BackupList
+                        data={props.data}
+                        result={props.result}
+                        date={c.date}
+                        brandId={c.brandId}
+                        processId={c.processId}
+                        excludeEmployeeId={c.employeeId}
+                      />
+                      {/* One-click apply backup */}
+                      {findBackup(props.data, props.result, c.date, c.brandId, c.processId, c.employeeId).slice(0, 1).map((cand) => (
+                        <button
+                          key={cand.employeeId}
+                          type="button"
+                          className="btn btn-small btn-primary"
+                          style={{ marginTop: 6 }}
+                          onClick={() => props.onAssignBackup(cand.employeeId, c.brandId!, c.processId!)}
+                        >
+                          + Assign {cand.name.split(' ')[0]} as Backup
+                        </button>
+                      ))}
+                    </div>
                   )}
                 </div>
               )}

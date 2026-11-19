@@ -533,7 +533,10 @@ function AttentionNeededStrip(props: AttentionStripProps) {
     return (
       <div className="attention-strip clean">
         <div className="attention-header">
-          <strong>No coverage gaps in December 2026.</strong>
+          <div className="attention-title-group">
+            <span className="header-mark mark-success" />
+            <h2 className="attention-heading">No coverage gaps in December 2026</h2>
+          </div>
           <span className="muted small">All mandatory client operating rules are fully satisfied.</span>
         </div>
       </div>
@@ -544,7 +547,7 @@ function AttentionNeededStrip(props: AttentionStripProps) {
     <div className="attention-strip">
       <div className="attention-header">
         <div className="attention-title-group">
-          <span className="attention-badge tabular">{errors.length} shortages</span>
+          <span className="header-mark mark-danger" />
           <h2 className="attention-heading">Coverage shortages ({errors.length})</h2>
         </div>
         <button className="btn btn-small btn-secondary" onClick={props.onJumpToConflicts}>
@@ -553,10 +556,13 @@ function AttentionNeededStrip(props: AttentionStripProps) {
       </div>
 
       <div className="attention-list">
-        <div className="att-item error">
+        <div className="att-item">
           <div className="att-item-meta">
-            <span className="att-brand">GlowKart · Retention</span>
-            <span className="att-dates tabular">Dec 8 – 10 (3 days)</span>
+            <span className="att-brand">
+              <span className="header-mark mark-danger" />
+              GlowKart · Retention
+            </span>
+            <span className="att-dates mono">Dec 8 – 10 (3 days)</span>
           </div>
           <p className="att-body">
             Aarav Mehta is on approved planned leave. No authorized backup allocated. 0 of 1 required staff scheduled.
@@ -574,10 +580,13 @@ function AttentionNeededStrip(props: AttentionStripProps) {
           </div>
         </div>
 
-        <div className="att-item error">
+        <div className="att-item">
           <div className="att-item-meta">
-            <span className="att-brand">BookBarn · Customer support</span>
-            <span className="att-dates tabular">Dec 21</span>
+            <span className="att-brand">
+              <span className="header-mark mark-danger" />
+              BookBarn · Customer support
+            </span>
+            <span className="att-dates mono">Dec 21</span>
           </div>
           <p className="att-body">
             Meera Pillai is on approved planned leave. No authorized backup allocated. Complete service gap.
@@ -589,10 +598,13 @@ function AttentionNeededStrip(props: AttentionStripProps) {
           </div>
         </div>
 
-        <div className="att-item error">
+        <div className="att-item">
           <div className="att-item-meta">
-            <span className="att-brand">BookBarn · Retention</span>
-            <span className="att-dates tabular">Dec 21</span>
+            <span className="att-brand">
+              <span className="header-mark mark-danger" />
+              BookBarn · Retention
+            </span>
+            <span className="att-dates mono">Dec 21</span>
           </div>
           <p className="att-body">
             Sanjay Yadav is on approved planned leave. No authorized backup allocated. Complete service gap.
@@ -604,10 +616,13 @@ function AttentionNeededStrip(props: AttentionStripProps) {
           </div>
         </div>
 
-        <div className="att-item warn">
+        <div className="att-item">
           <div className="att-item-meta">
-            <span className="att-brand">TechTrove · Customer support</span>
-            <span className="att-dates tabular">29 operating days</span>
+            <span className="att-brand">
+              <span className="header-mark mark-warn" />
+              TechTrove · Customer support
+            </span>
+            <span className="att-dates mono">29 operating days</span>
           </div>
           <p className="att-body">
             Operating policy requires 2 staff daily. Only 1 primary (Vikram Joshi) allocated. 29 shifts short.
@@ -716,53 +731,120 @@ function OverviewView(p: OverviewProps) {
       {/* 2. Simulation Sandbox */}
       <section className="panel simulate">
         <div className="panel-head">
-          <h2 className="panel-title">Simulate a change</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className="header-mark mark-info" />
+            <h2 className="panel-title">Simulate a change</h2>
+          </div>
           <span className="muted small">Preview scheduling impact of an employee absence before applying it.</span>
         </div>
-        <div className="sim-row">
-          <label>
-            <span>Employee</span>
-            <select value={p.simEmp} onChange={(e) => p.setSimEmp(e.target.value)}>
-              {data.employees.map((e) => (
-                <option key={e.id} value={e.id}>{e.name}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Unavailable on</span>
-            <input type="date" value={p.simDate} onChange={(e) => p.setSimDate(e.target.value)} />
-          </label>
-          <button className="btn btn-primary" onClick={p.onRunSimulation}>Preview impact</button>
-          {p.simPreview && (
-            <>
-              <button className="btn btn-danger" onClick={p.onApplySimulation}>Apply change</button>
-              <button className="btn btn-secondary" onClick={p.onDiscardSimulation}>Discard</button>
-            </>
-          )}
-        </div>
-        {p.simPreview && (
-          <div className="sim-result">
-            {p.simNewConflicts.length === 0 ? (
-              <p className="ok-text">
-                No new coverage gaps. {p.simEmpName} absence on {p.simDate} is absorbed by existing backup coverage.
-              </p>
-            ) : (
-              <div>
-                <p className="bad-text">
-                  Absence generates {p.simNewConflicts.length} new operational conflict(s):
-                </p>
-                <ul className="conflict-list small">
-                  {p.simNewConflicts.map((c) => (
-                    <li key={c.id} className={c.severity}>
-                      <strong>{c.severity === 'error' ? 'Gap' : 'Warning'}:</strong> {c.message}
-                      {c.suggestion && <span className="muted"> — {c.suggestion}</span>}
-                    </li>
+
+        <div className="simulate-grid">
+          <div className="simulate-form-col">
+            <div className="sim-row">
+              <label>
+                <span>Employee</span>
+                <select value={p.simEmp} onChange={(e) => p.setSimEmp(e.target.value)}>
+                  {data.employees.map((e) => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
                   ))}
-                </ul>
+                </select>
+              </label>
+              <label>
+                <span>Unavailable on</span>
+                <input type="date" value={p.simDate} onChange={(e) => p.setSimDate(e.target.value)} />
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button className="btn btn-primary" onClick={p.onRunSimulation}>Preview impact</button>
+              {p.simPreview && (
+                <>
+                  <button className="btn btn-danger" onClick={p.onApplySimulation}>Apply change</button>
+                  <button className="btn btn-secondary" onClick={p.onDiscardSimulation}>Discard</button>
+                </>
+              )}
+            </div>
+
+            {p.simPreview && (
+              <div className="sim-result">
+                {p.simNewConflicts.length === 0 ? (
+                  <p className="ok-text mono">
+                    No new coverage gaps. {p.simEmpName} absence on {p.simDate} is absorbed by existing backup coverage.
+                  </p>
+                ) : (
+                  <div>
+                    <p className="bad-text mono">
+                      Absence generates {p.simNewConflicts.length} new operational conflict(s):
+                    </p>
+                    <ul className="conflict-list small">
+                      {p.simNewConflicts.map((c) => (
+                        <li key={c.id}>
+                          <span className={`chip mono ${c.severity === 'error' ? 'bad' : 'warn'}`}>
+                            {c.severity === 'error' ? 'GAP' : 'WARN'}
+                          </span>
+                          <span className="mono" style={{ marginLeft: 6 }}>{c.message}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
+
+          <div className="simulate-impact-col">
+            <div className="impact-header">
+              <span className="impact-title">Live Staffing &amp; Cost Constraint</span>
+              <span className="impact-badge mono">RotaCloud constraint</span>
+            </div>
+            <div className="impact-body">
+              <div>
+                <span className="muted small">Current assignment on {p.simDate}:</span>
+                <div className="impact-stat-line">
+                  {(() => {
+                    const empObj = data.employees.find((e) => e.id === p.simEmp);
+                    const entObj = empObj ? result.entries.find((e) => e.employeeId === empObj.id && e.date === p.simDate) : undefined;
+                    const brObj = entObj ? data.brands.find((b) => b.id === entObj.brandId) : undefined;
+                    const isLv = empObj ? empObj.leaves.includes(p.simDate) : false;
+                    const isOf = empObj ? empObj.weeklyOff.includes(new Date(`${p.simDate}T12:00:00`).getDay()) : false;
+
+                    if (entObj) {
+                      return (
+                        <>
+                          <strong>{brObj?.name ?? entObj.brandId}</strong> · {entObj.processes.map((pid) => processLabel(pid)).join(', ')}
+                          <span className="muted"> (8h shift · Standard rate)</span>
+                        </>
+                      );
+                    }
+                    if (isLv) return <span className="muted">Already marked on approved leave (0h)</span>;
+                    if (isOf) return <span className="muted">Scheduled weekly off / Reserve capacity (0h)</span>;
+                    return <span className="muted">Reserve floater (Unscheduled · 0h)</span>;
+                  })()}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 8 }}>
+                <span className="muted small">Projected absence impact:</span>
+                <div className="impact-stat-line">
+                  {p.simPreview ? (
+                    p.simNewConflicts.length === 0 ? (
+                      <span className="ok-text mono">
+                        Coverage safe. Backup allocations absorb 8h absence without breach.
+                      </span>
+                    ) : (
+                      <span className="bad-text mono">
+                        {p.simNewConflicts.length} new gap(s) generated (-8h coverage delta).
+                      </span>
+                    )
+                  ) : (
+                    <span className="muted">
+                      Removing this staff member deducts 8h shift capacity. Click Preview impact to validate.
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* 3. Monthly Roster Console with When I Work View Options Toolbar */}
@@ -1111,60 +1193,39 @@ function OverviewView(p: OverviewProps) {
                   })}
                 </tbody>
 
-                {/* Planday-style Totals Footer pinned under every day column */}
-                <tfoot>
-                  <tr className="tfoot-row tfoot-staff">
+                {/* Planday & Connecteam Totals Footer pinned under every day column */}
+                <tfoot className="totals-footer">
+                  <tr className="tfoot-row">
                     <td className="sticky-col tfoot-label">
-                      <span className="tfoot-label-title">Staff on shift</span>
-                    </td>
-                    {result.days.map((d) => {
-                      const workingCount = result.entries.filter((e) => e.date === d).length;
-                      return (
-                        <td key={d} className="tfoot-val tabular" title={`${workingCount} staff scheduled on ${d}`}>
-                          {workingCount}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  <tr className="tfoot-row tfoot-hours">
-                    <td className="sticky-col tfoot-label">
-                      <span className="tfoot-label-title">Total hours</span>
-                    </td>
-                    {result.days.map((d) => {
-                      const workingCount = result.entries.filter((e) => e.date === d).length;
-                      return (
-                        <td key={d} className="tfoot-val tabular" title={`${workingCount * 8} total staffing hours`}>
-                          {workingCount * 8}h
-                        </td>
-                      );
-                    })}
-                  </tr>
-                  <tr className="tfoot-row tfoot-coverage">
-                    <td className="sticky-col tfoot-label">
-                      <span className="tfoot-label-title">Coverage status</span>
+                      <span className="tfoot-label-title">Totals</span>
+                      <span className="muted small" style={{ display: 'block', fontSize: 10 }}>Covered · Hours</span>
                     </td>
                     {result.days.map((d) => {
                       const dayCov = result.coverage.filter((c) => c.date === d && c.operating);
+                      const requiredCount = dayCov.reduce((sum, c) => sum + c.required, 0);
+                      const scheduledCount = dayCov.reduce((sum, c) => sum + c.scheduled.length, 0);
+                      const workingCount = result.entries.filter((e) => e.date === d).length;
+                      const hours = workingCount * 8;
                       const gaps = dayCov.filter((c) => c.status === 'gap').length;
                       const under = dayCov.filter((c) => c.status === 'understaffed').length;
                       const overridden = dayCov.filter((c) => c.overriddenOff.length > 0).length;
 
                       let cls = 'cov-ok';
                       let marker = '✓';
-                      let tip = `${d}: All operating processes fully covered`;
+                      let tip = `${d}: covered ${scheduledCount}/${requiredCount} · ${hours}h`;
 
                       if (gaps > 0) {
                         cls = 'cov-gap';
                         marker = `×${gaps}`;
-                        tip = `${d}: ${gaps} complete process gap(s)`;
+                        tip = `${d}: covered ${scheduledCount}/${requiredCount} · ${hours}h (${gaps} gap)`;
                       } else if (under > 0) {
                         cls = 'cov-under';
                         marker = `!${under}`;
-                        tip = `${d}: ${under} understaffed process(es)`;
+                        tip = `${d}: covered ${scheduledCount}/${requiredCount} · ${hours}h (${under} short)`;
                       } else if (overridden > 0) {
                         cls = 'cov-warn';
                         marker = '!';
-                        tip = `${d}: Covered (${overridden} weekly-off override(s))`;
+                        tip = `${d}: covered ${scheduledCount}/${requiredCount} · ${hours}h (${overridden} override)`;
                       }
 
                       return (
@@ -1174,7 +1235,11 @@ function OverviewView(p: OverviewProps) {
                           onClick={() => p.onInspectDate(d)}
                           title={tip}
                         >
-                          <span className="cov-symbol tabular">{marker}</span>
+                          <div className="tfoot-cell-content">
+                            <span className="cov-symbol mono">{marker}</span>
+                            <span className="tfoot-cov-line mono">{scheduledCount}/{requiredCount}</span>
+                            <span className="tfoot-hours-line mono">{hours}h</span>
+                          </div>
                         </td>
                       );
                     })}
@@ -1260,7 +1325,7 @@ function InspectorModal(props: InspectorModalProps) {
             <div className="modal-section">
               <h3 className="section-title">Assignment status</h3>
               {entry ? (
-                <div className={`assignment-card ${entry.overriddenOff ? 'is-overridden' : ''}`}>
+                <div className="assignment-card">
                   <div className="assign-row">
                     <span className="assign-label">Assigned brand:</span>
                     <strong>{assignedBrand?.name ?? entry.brandId}</strong> ({assignedBrand?.category ?? 'General'})
@@ -1269,38 +1334,86 @@ function InspectorModal(props: InspectorModalProps) {
                     <span className="assign-label">Assigned process:</span>
                     <strong>{entry.processes.map((pid) => processLabel(pid)).join(', ')}</strong>
                   </div>
-                  <div className="assign-row">
-                    <span className="assign-label">Optimization model:</span>
-                    <span className="assign-note">
-                      Assigned by CP-SAT solver. Satisfies single-assignment constraint (at most 1 process daily).
+                  
+                  {/* Shiftboard visible rule annotation */}
+                  <div className="rule-annotation">
+                    <span className="rule-annotation-label mono">RULE APPLIED:</span>
+                    <span className="rule-annotation-text">
+                      {entry.overriddenOff
+                        ? 'Soft constraint override: Scheduled on preferred weekly off to preserve mandatory client coverage.'
+                        : 'Hard constraint satisfied: Exclusive daily assignment (<= 1 brand/process daily).'}
                     </span>
                   </div>
+
                   {entry.overriddenOff && (
-                    <div className="alert-box warn">
-                      <strong>Weekly off overridden:</strong> Assigned on preferred weekly off ({dayName})
-                      to satisfy mandatory client coverage. Flagged as soft-constraint warning.
+                    <div className="alert-box">
+                      <div className="alert-box-head">
+                        <span className="header-mark mark-warn" />
+                        <strong>Weekly off overridden</strong>
+                      </div>
+                      <div className="alert-box-text">
+                        Assigned on preferred weekly off ({dayName}) to satisfy mandatory client coverage. Flagged as soft-constraint warning.
+                      </div>
                     </div>
                   )}
                 </div>
               ) : isLeave ? (
-                <div className="alert-box error">
-                  <strong>Planned leave (Approved):</strong> Hard constraint. The CP-SAT engine strictly prohibits scheduling on approved leave.
+                <div className="alert-box">
+                  <div className="alert-box-head">
+                    <span className="header-mark mark-danger" />
+                    <strong>Planned leave (Approved)</strong>
+                  </div>
+                  <div className="alert-box-text">
+                    Hard constraint. The CP-SAT engine strictly prohibits scheduling on approved leave.
+                  </div>
+                  <div className="rule-annotation" style={{ marginTop: 6 }}>
+                    <span className="rule-annotation-label mono">RULE APPLIED:</span>
+                    <span className="rule-annotation-text">Approved planned leave represents absolute employee unavailability.</span>
+                  </div>
                 </div>
               ) : isCompOff ? (
-                <div className="alert-box error">
-                  <strong>Comp-off (Approved):</strong> Hard constraint. Staff unavailable for coverage.
+                <div className="alert-box">
+                  <div className="alert-box-head">
+                    <span className="header-mark mark-danger" />
+                    <strong>Comp-off (Approved)</strong>
+                  </div>
+                  <div className="alert-box-text">
+                    Hard constraint. Staff unavailable for operational coverage.
+                  </div>
+                  <div className="rule-annotation" style={{ marginTop: 6 }}>
+                    <span className="rule-annotation-label mono">RULE APPLIED:</span>
+                    <span className="rule-annotation-text">Approved comp-off strictly enforced as hard unavailability constraint.</span>
+                  </div>
                 </div>
               ) : holiday ? (
-                <div className="alert-box info">
-                  <strong>Public holiday:</strong> {holiday.name}.
+                <div className="alert-box">
+                  <div className="alert-box-head">
+                    <span className="header-mark mark-info" />
+                    <strong>Public holiday: {holiday.name}</strong>
+                  </div>
+                  <div className="alert-box-text">
+                    Statutory company closure. Operating rules adapt to holiday policies.
+                  </div>
                 </div>
               ) : isOff ? (
-                <div className="alert-box neutral">
-                  <strong>Preferred weekly off:</strong> Not scheduled. Available as reserve if coverage requires.
+                <div className="alert-box">
+                  <div className="alert-box-head">
+                    <span className="header-mark mark-neutral" />
+                    <strong>Preferred weekly off</strong>
+                  </div>
+                  <div className="alert-box-text">
+                    Not scheduled. Available as reserve floater if emergency client coverage requires.
+                  </div>
                 </div>
               ) : (
-                <div className="alert-box neutral">
-                  <strong>Reserve floater:</strong> Unscheduled and available on this date.
+                <div className="alert-box">
+                  <div className="alert-box-head">
+                    <span className="header-mark mark-neutral" />
+                    <strong>Reserve floater</strong>
+                  </div>
+                  <div className="alert-box-text">
+                    Unscheduled and held in reserve on this date.
+                  </div>
                 </div>
               )}
 
@@ -1417,12 +1530,28 @@ function InspectorModal(props: InspectorModalProps) {
 
 function PodsView(props: { result: RosterResult; data: RosterData }) {
   const { result, data } = props;
+  const podAccents: Record<string, string> = {
+    pod_1: 'var(--pod-accent-1)',
+    pod_2: 'var(--pod-accent-2)',
+    pod_3: 'var(--pod-accent-3)',
+    pod_4: 'var(--pod-accent-4)',
+  };
+
   return (
     <div className="cards-grid">
       {PODS.map((pod) => {
         const members = data.employees.filter((e) => e.podId === pod.id);
         const lead = data.employees.find((e) => e.id === pod.leadId);
         const podBrands = data.brands.filter((b) => b.podId === pod.id);
+        const accent = podAccents[pod.id] ?? 'var(--accent)';
+
+        const primaryCount = data.allocations.filter((a) =>
+          members.some((m) => m.id === a.employeeId) && a.role === 'primary'
+        ).length;
+        const reserveCount = data.allocations.filter((a) =>
+          members.some((m) => m.id === a.employeeId) && a.role === 'secondary'
+        ).length;
+
         const podConflicts = result.conflicts.filter((c) => {
           if (c.employeeId) return data.employees.find((e) => e.id === c.employeeId)?.podId === pod.id;
           const brand = data.brands.find((b) => b.id === c.brandId);
@@ -1430,22 +1559,58 @@ function PodsView(props: { result: RosterResult; data: RosterData }) {
         });
         const gaps = podConflicts.filter((c) => c.severity === 'error').length;
         const warns = podConflicts.filter((c) => c.severity === 'warning').length;
+
         return (
           <section key={pod.id} className="panel pod-card">
-            <div className="panel-head">
-              <h2 className="panel-title">{pod.name}</h2>
+            <div className="pod-card-header">
+              <div className="pod-title-wrap">
+                <span className="header-mark" style={{ backgroundColor: accent }} />
+                <h2 className="panel-title">{pod.name}</h2>
+              </div>
               <span className="muted small">Lead: {lead?.name ?? '—'}</span>
             </div>
-            <p className="muted small">
-              {members.length} employees · {podBrands.length} brands ({podBrands.map((b) => b.name).join(', ')})
-            </p>
-            <div className="chip-row">
-              <span className="chip bad tabular">{gaps} errors</span>
-              <span className="chip warn tabular">{warns} warnings</span>
+
+            <div className="pod-stat-trio">
+              <div className="pod-stat-item">
+                <span className="pod-stat-val mono" style={{ color: accent }}>{members.length}</span>
+                <span className="pod-stat-lbl">Staff</span>
+              </div>
+              <div className="pod-stat-item">
+                <span className="pod-stat-val mono" style={{ color: accent }}>{primaryCount}</span>
+                <span className="pod-stat-lbl">Primary</span>
+              </div>
+              <div className="pod-stat-item">
+                <span className="pod-stat-val mono" style={{ color: accent }}>{reserveCount}</span>
+                <span className="pod-stat-lbl">Reserve</span>
+              </div>
             </div>
+
+            <div className="pod-brand-pills">
+              {podBrands.map((b) => (
+                <span key={b.id} className="pod-brand-pill">{b.name}</span>
+              ))}
+            </div>
+
+            <div className="pod-completeness-line muted small">
+              {gaps === 0 ? 'All operating shifts fully staffed.' : `${gaps} staffing shortage(s) require allocation.`}
+            </div>
+
+            <div className="chip-row">
+              {gaps > 0 ? (
+                <span className="chip bad mono">{gaps} errors</span>
+              ) : (
+                <span className="chip ok mono">0 errors</span>
+              )}
+              {warns > 0 ? (
+                <span className="chip warn mono">{warns} warnings</span>
+              ) : (
+                <span className="chip slate mono">0 warnings</span>
+              )}
+            </div>
+
             <table className="mini-table">
               <thead>
-                <tr><th>Employee</th><th>Brands</th><th>Working days</th></tr>
+                <tr><th>Employee</th><th>Brands</th><th className="mono" style={{ textAlign: 'right' }}>Days</th></tr>
               </thead>
               <tbody>
                 {members.map((m) => {
@@ -1457,7 +1622,7 @@ function PodsView(props: { result: RosterResult; data: RosterData }) {
                     <tr key={m.id}>
                       <td>{m.name}</td>
                       <td className="muted">{brands.join(', ')}</td>
-                      <td className="tabular">{working}</td>
+                      <td className="mono" style={{ textAlign: 'right' }}>{working}</td>
                     </tr>
                   );
                 })}
@@ -1709,11 +1874,10 @@ function EmployeesView(props: {
                 <th>Pod</th>
                 <th>Allocated brands</th>
                 <th>Tier</th>
-                <th>Shifts</th>
-                <th>Hours</th>
+                <th className="mono">Shifts</th>
+                <th className="mono">Hours</th>
                 <th style={{ width: '180px' }}>Capacity</th>
-                <th>Overrides</th>
-                <th>Action</th>
+                <th className="mono">Overrides</th>
               </tr>
             </thead>
             <tbody>
@@ -1748,39 +1912,28 @@ function EmployeesView(props: {
                     key={e.id}
                     className={`workload-row ${isSelected ? 'row-selected' : ''}`}
                     onClick={() => props.setSelectedEmployee(e.id)}
+                    title={`Click to inspect ${e.name}`}
                   >
                     <td><strong>{e.name}</strong></td>
                     <td className="muted">{PODS.find((p) => p.id === e.podId)?.name}</td>
                     <td className="muted small">{brandNames.join(', ')}</td>
                     <td>{tierBadge}</td>
-                    <td className="tabular">{daysWorked}</td>
-                    <td className="tabular">{hoursWorked}h</td>
+                    <td className="mono">{daysWorked}</td>
+                    <td className="mono">{hoursWorked}h</td>
                     <td>
                       <div className="workload-bar-wrapper">
                         <div className="workload-bar-track">
                           <div className={`workload-bar-fill ${barClass}`} style={{ width: `${Math.min(pct, 100)}%` }} />
                         </div>
-                        <span className="workload-pct tabular">{pct}%</span>
+                        <span className="workload-pct mono">{pct}%</span>
                       </div>
                     </td>
                     <td>
                       {overriddenCount > 0 ? (
-                        <span className="warn-text tabular">{overriddenCount} !</span>
+                        <span className="warn-text mono">{overriddenCount} !</span>
                       ) : (
-                        <span className="muted tabular">0</span>
+                        <span className="muted mono">0</span>
                       )}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className={`btn btn-small ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          props.setSelectedEmployee(e.id);
-                        }}
-                      >
-                        {isSelected ? 'Selected' : 'Inspect'}
-                      </button>
                     </td>
                   </tr>
                 );
@@ -1863,11 +2016,79 @@ function ConflictsView(props: {
   setBackupFor: (v: string | null) => void;
   onAssignBackup: (employeeId: string, brandId: string, processId: ProcessId) => void;
 }) {
-  const { conflicts } = props;
+  const { conflicts, data } = props;
   const errors = props.allConflicts.filter((c) => c.severity === 'error').length;
   const warnings = props.allConflicts.filter((c) => c.severity === 'warning').length;
   const gaps = props.allConflicts.filter((c) => c.type === 'COVERAGE_GAP').length;
   const under = props.allConflicts.filter((c) => c.type === 'UNDERSTAFFED').length;
+
+  function getConflictDescription(c: Conflict, rosterData: RosterData): string {
+    const brandName = c.brandId ? (rosterData.brands.find((b) => b.id === c.brandId)?.name ?? c.brandId) : 'Operational slot';
+    const procName = c.processId ? processLabel(c.processId) : 'Operating process';
+    const emp = c.employeeId ? rosterData.employees.find((e) => e.id === c.employeeId) : undefined;
+
+    if (c.type === 'COVERAGE_GAP') {
+      return `Complete coverage gap for ${brandName} · ${procName} on ${c.date}. 0 staff scheduled against mandatory client requirement.`;
+    }
+    if (c.type === 'UNDERSTAFFED') {
+      return `${brandName} · ${procName} is staffed below minimum client requirement on ${c.date}. Client SLA requires additional staff allocation.`;
+    }
+    if (c.type === 'OFF_OVERRIDDEN') {
+      return `${emp?.name ?? 'Staff member'} scheduled on preferred weekly off (${c.date}) to satisfy mandatory client coverage for ${brandName} · ${procName}.`;
+    }
+    return c.message;
+  }
+
+  const gapsList = conflicts.filter((c) => c.type === 'COVERAGE_GAP');
+  const underList = conflicts.filter((c) => c.type === 'UNDERSTAFFED');
+  const overridesList = conflicts.filter((c) => c.type !== 'COVERAGE_GAP' && c.type !== 'UNDERSTAFFED');
+
+  function renderConflictItem(c: Conflict) {
+    const isError = c.severity === 'error';
+    const brand = c.brandId ? data.brands.find((b) => b.id === c.brandId) : undefined;
+    return (
+      <li key={c.id} className="conflict-row">
+        <div className="conflict-left">
+          <div className="conflict-meta-line">
+            <span className={`chip mono ${isError ? 'bad' : 'warn'}`}>
+              {isError ? 'ERROR' : 'WARN'}
+            </span>
+            <span className="conflict-type-badge mono">{c.type}</span>
+            <span className="conflict-date mono">{c.date}</span>
+            {brand && <span className="conflict-brand-tag">{brand.name}</span>}
+            {c.processId && <span className="conflict-proc-tag">{processLabel(c.processId)}</span>}
+          </div>
+          <p className="conflict-msg">{c.message}</p>
+          <p className="conflict-specific-detail">{getConflictDescription(c, data)}</p>
+        </div>
+        {c.brandId && c.processId && (
+          <div style={{ flexShrink: 0, textAlign: 'right' }}>
+            <button
+              type="button"
+              className="btn btn-small btn-secondary"
+              onClick={() => props.setBackupFor(props.backupFor === c.id ? null : c.id)}
+            >
+              {props.backupFor === c.id ? 'Hide backup' : 'Find backup'}
+            </button>
+            {props.backupFor === c.id && (
+              <div className="backup-box" style={{ marginTop: 8 }}>
+                {findBackup(props.data, props.result, c.date, c.brandId, c.processId, c.employeeId).slice(0, 1).map((cand) => (
+                  <button
+                    key={cand.employeeId}
+                    type="button"
+                    className="btn btn-small btn-primary"
+                    onClick={() => props.onAssignBackup(cand.employeeId, c.brandId!, c.processId!)}
+                  >
+                    + Assign {cand.name.split(' ')[0]} as backup
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </li>
+    );
+  }
 
   return (
     <section className="panel">
@@ -1900,43 +2121,52 @@ function ConflictsView(props: {
       {conflicts.length === 0 ? (
         <p className="ok-text" style={{ marginTop: 14 }}>No coverage gaps in December 2026. All operational rules satisfied.</p>
       ) : (
-        <ul className="conflict-list" style={{ marginTop: 14 }}>
-          {conflicts.map((c) => (
-            <li key={c.id} className={c.severity}>
-              <div className="conflict-main">
-                <span className={`severity ${c.severity}`}>{c.severity === 'error' ? 'Error' : 'Warning'}</span>
-                <span className="conflict-type-badge">{c.type}</span>
-                <span className="conflict-date tabular">{c.date}</span>
-                <p>{c.message}</p>
-                {c.suggestion && <p className="muted small">{c.suggestion}</p>}
-              </div>
-              {c.brandId && c.processId && (
-                <div>
-                  <button
-                    className="btn btn-small btn-secondary"
-                    onClick={() => props.setBackupFor(props.backupFor === c.id ? null : c.id)}
-                  >
-                    {props.backupFor === c.id ? 'Hide backup' : 'Find backup'}
-                  </button>
-                  {props.backupFor === c.id && (
-                    <div className="backup-box" style={{ marginTop: 8 }}>
-                      {findBackup(props.data, props.result, c.date, c.brandId, c.processId, c.employeeId).slice(0, 1).map((cand) => (
-                        <button
-                          key={cand.employeeId}
-                          type="button"
-                          className="btn btn-small btn-primary"
-                          onClick={() => props.onAssignBackup(cand.employeeId, c.brandId!, c.processId!)}
-                        >
-                          + Assign {cand.name.split(' ')[0]} as backup
-                        </button>
-                      ))}
-                    </div>
-                  )}
+        <div className="conflict-bands">
+          {gapsList.length > 0 && (
+            <div className="conflict-band">
+              <div className="conflict-band-header">
+                <div className="band-title-group">
+                  <span className="header-mark mark-danger" />
+                  <h3 className="band-title">Coverage gaps</h3>
                 </div>
-              )}
-            </li>
-          ))}
-        </ul>
+                <span className="band-count mono">{gapsList.length} gap(s)</span>
+              </div>
+              <ul className="conflict-list">
+                {gapsList.map(renderConflictItem)}
+              </ul>
+            </div>
+          )}
+
+          {underList.length > 0 && (
+            <div className="conflict-band">
+              <div className="conflict-band-header">
+                <div className="band-title-group">
+                  <span className="header-mark mark-warn" />
+                  <h3 className="band-title">Understaffed days</h3>
+                </div>
+                <span className="band-count mono">{underList.length} understaffed</span>
+              </div>
+              <ul className="conflict-list">
+                {underList.map(renderConflictItem)}
+              </ul>
+            </div>
+          )}
+
+          {overridesList.length > 0 && (
+            <div className="conflict-band">
+              <div className="conflict-band-header">
+                <div className="band-title-group">
+                  <span className="header-mark mark-warn" />
+                  <h3 className="band-title">Weekly-off overrides</h3>
+                </div>
+                <span className="band-count mono">{overridesList.length} override(s)</span>
+              </div>
+              <ul className="conflict-list">
+                {overridesList.map(renderConflictItem)}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
     </section>
   );

@@ -52,7 +52,7 @@ export function MonthMap(props: MonthMapProps) {
                     className={`map-day-header ${isSun ? 'map-sun' : ''}`}
                     title={`${d} (${WEEKDAYS[dt.getDay()]})`}
                   >
-                    <span className="map-day-num tabular">{dt.getDate()}</span>
+                    <span className="map-day-num mono">{dt.getDate()}</span>
                   </th>
                 );
               })}
@@ -69,7 +69,7 @@ export function MonthMap(props: MonthMapProps) {
                   <tr className="map-pod-group-row">
                     <td className="map-sticky-col map-pod-name" colSpan={result.days.length + 1}>
                       <span className="map-pod-tag">{pod.name}</span>
-                      <span className="map-pod-count tabular">({podEmployees.length} staff)</span>
+                      <span className="map-pod-count mono">({podEmployees.length} staff)</span>
                     </td>
                   </tr>
 

@@ -1037,6 +1037,11 @@ table { border-collapse: separate; border-spacing: 0; }
 .map-sq-sample.work.proc-ret { background: #C8F0DC; border-color: #047857; }
 .map-sq-sample.work.proc-ndr { background: #FDEBC8; border-color: #B45309; }
 .map-sq-sample.work.proc-multi { background: repeating-linear-gradient(45deg, #C7DBFF 0 3px, #E3D4FA 3px 6px); border-color: #BE185D; }
+.map-sq-sample.work.overridden { background: #FDE68A; border-color: #D97706; }
+.map-sq-sample.leave { background: #D1D5DB; border-color: #1F2937; }
+.map-sq-sample.holiday { background: #BFDBFE; border-color: #1E40AF; }
+.map-sq-sample.off { background: #E5E7EB; border-color: #374151; }
+.map-sq-sample.idle { background: #F1F5F9; border-color: #CBD5E1; }
 
 /* --- Item 10: Mobile Breakpoint --- */
 @media (max-width: 900px) {

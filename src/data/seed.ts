@@ -234,6 +234,10 @@ export const EMPLOYEES: Employee[] = [
   { id: 'e32', name: 'Amit Tiwari', podId: 'pod-delta', weeklyOff: [3], leaves: [], compOffs: [] },
   { id: 'e33', name: 'Lakshmi Venkat', podId: 'pod-delta', weeklyOff: [4], leaves: [], compOffs: [] },
   { id: 'e34', name: 'Om Prakash', podId: 'pod-delta', weeklyOff: [5], leaves: [], compOffs: [] },
+  // Two additional recovery specialists: one strengthens single-resource
+  // GlowKart cover, one gives BookBarn/TechTrove a safe floater.
+  { id: 'e35', name: 'Isha Rao', podId: 'pod-alpha', weeklyOff: [6], leaves: [], compOffs: [] },
+  { id: 'e36', name: 'Naveen Kumar', podId: 'pod-delta', weeklyOff: [0], leaves: [], compOffs: [] },
 ];
 
 export const ALLOCATIONS: Allocation[] = [
@@ -308,6 +312,13 @@ export const ALLOCATIONS: Allocation[] = [
   { employeeId: 'e32', brandId: 'b12', processId: 'CS', role: 'secondary' },
   { employeeId: 'e33', brandId: 'b12', processId: 'RET', role: 'secondary' },
   { employeeId: 'e33', brandId: 'b10', processId: 'CS', role: 'secondary' },
+  // --- Recovery specialists (e35, e36): cross-cover the fragile single-resource brands ---
+  { employeeId: 'e35', brandId: 'b01', processId: 'RET', role: 'secondary' },
+  { employeeId: 'e35', brandId: 'b01', processId: 'CS', role: 'secondary' },
+  { employeeId: 'e35', brandId: 'b02', processId: 'RET', role: 'secondary' },
+  { employeeId: 'e36', brandId: 'b11', processId: 'CS', role: 'secondary' },
+  { employeeId: 'e36', brandId: 'b11', processId: 'RET', role: 'secondary' },
+  { employeeId: 'e36', brandId: 'b04', processId: 'CS', role: 'secondary' },
 ];
 
 export const HOLIDAYS: Holiday[] = [

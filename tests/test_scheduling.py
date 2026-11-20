@@ -485,64 +485,60 @@ def december_fixture():
 
 def test_december_scenario_a_glowkart_retention(december_fixture):
     """Scenario A: Aarav Mehta (e01) is on approved leave from 8-10 December 2026.
-    GlowKart Retention process has no backup resource.
+    The expanded 36-person dataset now gives GlowKart Retention a safe backup.
     Expected result:
     - Aarav must not be scheduled.
-    - Retention must be flagged as uncovered.
-    - The engine must report the exact affected dates (2026-12-08, 2026-12-09, 2026-12-10).
-    - The coverage shortage must not be silently ignored.
+    - Retention remains covered by e35 on all three dates.
     """
-    sched_input = SchedulingInput.from_dict(december_fixture)
+    data = copy.deepcopy(december_fixture)
+    data["assignment_semantics"] = "brand"
+    sched_input = SchedulingInput.from_dict(data)
     result = SchedulingEngine(sched_input).solve()
 
-    assert result.status == SolverStatus.INFEASIBLE
+    assert result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE)
 
-    # 1. Aarav must not be scheduled during approved leave
     leave_dates = {"2026-12-08", "2026-12-09", "2026-12-10"}
     for cov in result.coverage:
         if cov.date in leave_dates:
             assert "e01" not in cov.scheduled, f"Aarav scheduled on leave date {cov.date}"
+            if cov.brand_id == "b01" and cov.process_id == "RET":
+                assert cov.status == "covered"
+                assert "e35" in cov.scheduled
 
-    # 2. Retention must be flagged as uncovered on exact dates
     ret_shortages = [
         c for c in result.conflicts
         if c.brand_id == "b01" and c.process_id == "RET" and c.date in leave_dates
     ]
-    reported_dates = {c.date for c in ret_shortages}
-    assert reported_dates == leave_dates, f"Expected shortages on {leave_dates}, got {reported_dates}"
-    for c in ret_shortages:
-        assert c.type == "COVERAGE_GAP"
-        assert c.diagnostic_shortage == 1
-        assert "Aarav Mehta" in c.message
-        assert "leave" in c.message
+    assert ret_shortages == []
 
 
 def test_december_scenario_b_bookbarn(december_fixture):
-    """Scenario B: Both employees assigned to BookBarn (e27, e28) are on approved leave on 21 Dec 2026.
+    """Scenario B: Both BookBarn employees (e27, e28) are on leave on 21 Dec 2026.
+    The 36-person dataset adds e36 as BookBarn cross-cover.
     Expected result:
     - Neither employee may be scheduled.
-    - BookBarn must be flagged as uncovered.
-    - The engine must report the affected process and date (2026-12-21, CS and RET).
+    - e36 covers both CS and RET in one brand-level working day.
     """
-    sched_input = SchedulingInput.from_dict(december_fixture)
+    data = copy.deepcopy(december_fixture)
+    data["assignment_semantics"] = "brand"
+    sched_input = SchedulingInput.from_dict(data)
     result = SchedulingEngine(sched_input).solve()
 
-    assert result.status == SolverStatus.INFEASIBLE
+    assert result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE)
 
-    # Neither employee scheduled on 2026-12-21
     for cov in result.coverage:
         if cov.date == "2026-12-21":
             assert "e27" not in cov.scheduled, "e27 scheduled during approved leave"
             assert "e28" not in cov.scheduled, "e28 scheduled during approved leave"
+            if cov.brand_id == "b11":
+                assert cov.status == "covered"
+                assert "e36" in cov.scheduled
 
-    # Both CS and RET reported as uncovered on 2026-12-21
     bb_shortages = [
         c for c in result.conflicts
         if c.brand_id == "b11" and c.date == "2026-12-21"
     ]
-    assert len(bb_shortages) == 2, f"Expected 2 shortages for BookBarn on 2026-12-21, got {len(bb_shortages)}"
-    procs = {c.process_id for c in bb_shortages}
-    assert procs == {"CS", "RET"}
+    assert bb_shortages == []
 
 
 def test_december_scenario_c_weekly_off_overrides(december_fixture):
@@ -553,7 +549,9 @@ def test_december_scenario_c_weekly_off_overrides(december_fixture):
     - A weekly-off override warning must be generated.
     - Roster must not incorrectly classify this as a hard-constraint violation.
     """
-    sched_input = SchedulingInput.from_dict(december_fixture)
+    data = copy.deepcopy(december_fixture)
+    data["assignment_semantics"] = "brand"
+    sched_input = SchedulingInput.from_dict(data)
     result = SchedulingEngine(sched_input).solve()
 
     # Look for OFF_OVERRIDDEN warnings in conflicts

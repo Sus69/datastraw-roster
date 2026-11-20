@@ -189,6 +189,14 @@ export function generateRoster(data: RosterData, year: number, month: number): R
 
   const empById = new Map(data.employees.map((e) => [e.id, e]));
 
+  // Fairness ledger: how often each employee has already been used this month.
+  // Shared backups are chosen from the least-loaded eligible people so the same
+  // floater is not repeatedly pulled into every gap.
+  const workload = new Map<string, number>();
+  const overrideWorkload = new Map<string, number>();
+  const loadOf = (employeeId: string): number => workload.get(employeeId) ?? 0;
+  const overridesOf = (employeeId: string): number => overrideWorkload.get(employeeId) ?? 0;
+
   // Employees allocated to each brand (regardless of process).
   const empsByBrand = new Map<string, string[]>();
   for (const a of data.allocations) {
@@ -282,6 +290,13 @@ export function generateRoster(data: RosterData, year: number, month: number): R
         const px = primaryCount(x.id);
         const py = primaryCount(y.id);
         if (px !== py) return py - px;
+        // Fairness tie-breaker: spread work and weekly-off overrides evenly.
+        const loadX = loadOf(x.id);
+        const loadY = loadOf(y.id);
+        if (loadX !== loadY) return loadX - loadY;
+        const overrideX = overridesOf(x.id);
+        const overrideY = overridesOf(y.id);
+        if (overrideX !== overrideY) return overrideX - overrideY;
         return x.name.localeCompare(y.name);
       });
 
@@ -337,6 +352,13 @@ export function generateRoster(data: RosterData, year: number, month: number): R
     }
 
     entries.push(...dayEntries);
+
+    // Record the month-to-date workload after the day is finalized. Directives
+    // count too, so a recovery repair immediately affects later fairness.
+    for (const entry of dayEntries) {
+      workload.set(entry.employeeId, loadOf(entry.employeeId) + 1);
+      if (entry.overriddenOff) overrideWorkload.set(entry.employeeId, overridesOf(entry.employeeId) + 1);
+    }
 
     // Coverage for the day, computed from the entries just made.
     for (const brand of data.brands) {

@@ -337,6 +337,20 @@ class SchedulingEngine:
                         model.Add(excess == sum(cand_vars) - min_staff)
                         excess_staffing_terms.append(excess)
 
+        # Fairness objective: cap the busiest employee's month-to-date workload.
+        # Total coverage is fixed by demand, but this spreads shared/backup work
+        # instead of repeatedly loading the same floater.
+        fairness_terms: List[cp_model.IntVar] = []
+        if x:
+            max_load = model.NewIntVar(0, max(1, len(self.dates) * len(self.procs)), "max_employee_load")
+            for e in self.input_data.employees:
+                employee_vars = [
+                    var for (e_id, _b, _p, _d), var in x.items() if e_id == e.id
+                ]
+                if employee_vars:
+                    model.Add(max_load >= sum(employee_vars))
+            fairness_terms.append(max_load)
+
         # Staged re-optimization if delta_vars active
         if lexicographic and delta_vars:
             model.Minimize(sum(delta_vars))
@@ -366,6 +380,8 @@ class SchedulingEngine:
             obj_terms.append((pv, 100))
         for ev in excess_staffing_terms:
             obj_terms.append((ev, 10))
+        for fv in fairness_terms:
+            obj_terms.append((fv, 1))
 
         if obj_terms:
             model.Minimize(sum(var * coeff for var, coeff in obj_terms))

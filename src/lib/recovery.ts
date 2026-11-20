@@ -49,6 +49,7 @@ export type RecoveryRejectionCode =
   | 'CANDIDATE_DOUBLE_BOOKED'
   | 'NO_COMPATIBLE_PROCESS_ALLOCATION'
   | 'NO_DESTINATION_AUTHORIZATION'
+  | 'NO_CROSS_POD_AUTHORIZATION'
   | 'REASSIGNMENT_CAUSES_UNDERSTAFFING'
   | 'TARGET_NOT_COVERED'
   | 'NO_ELIGIBLE_EMPLOYEE';
@@ -62,6 +63,8 @@ export interface RecoveryImpact {
   afterScheduled: number;
   beforeStatus: DayCoverage['status'];
   afterStatus: DayCoverage['status'];
+  /** Whether the repair resolved, introduced, or merely changed a slot. */
+  effect: 'resolved' | 'introduced' | 'changed';
 }
 
 /** Coverage left behind at the candidate's source brand. */
@@ -88,7 +91,9 @@ export interface RecoveryEligibility {
   currentAssignment: RecoveryCandidate['currentAssignment'];
   targetAuthorized: boolean;
   processAuthorized: boolean;
+  destinationAuthorized: boolean;
   samePod: boolean;
+  crossPodRequired: boolean;
   crossPodAuthorized: boolean;
   rejectionCode?: RecoveryRejectionCode;
   rejectionReason?: string;
@@ -112,12 +117,18 @@ export interface RecoveryCandidate {
   recoveryType: RecoveryType;
   allocationType: RecoveryAssignment['type'];
   changedAssignments: number;
+  removedAssignments: RecoveryAssignmentChange[];
+  addedAssignments: RecoveryAssignmentChange[];
+  /** Total scheduled source seats lost by moving the candidate. */
+  sourceCoverageLoss: number;
   /** Number of source processes whose primary ownership actually moves. */
   primaryDisruption: number;
   weeklyOffOverrides: number;
   additionalStaffing: number;
   sourceImpact: RecoverySourceImpact[];
   sourceProcessesAtMinimum: number;
+  /** Existing number of dated roster entries for this employee. */
+  currentWorkload: number;
   coverageImpact: RecoveryImpact[];
   hardConstraintsSatisfied: boolean;
   valid: boolean;
@@ -126,9 +137,23 @@ export interface RecoveryCandidate {
   reasons: string[];
   /** Lexicographic ordering key; lower is better. Not arithmetic weights. */
   rankingKey: number[];
+  /** Human-readable explanation of the candidate's lexicographic position. */
+  rankingExplanation: string;
   /** Legacy display value: final best-first index after sorting. */
   score: number;
   directive?: RecoveryAssignment;
+}
+
+export interface RecoveryAssignmentChange {
+  brandId: string;
+  brandName: string;
+  processes: ProcessId[];
+}
+
+export interface RecoverySimulation {
+  entries: RosterEntry[];
+  removed: RosterEntry[];
+  added: RosterEntry[];
 }
 
 export interface RecoveryAnalysis {
@@ -152,6 +177,8 @@ const REJECTION_TEXT: Record<RecoveryRejectionCode, string> = {
   NO_COMPATIBLE_PROCESS_ALLOCATION: 'No allocation for the required process.',
   NO_DESTINATION_AUTHORIZATION:
     'No explicit destination brand/process authorization; process experience alone is not enough.',
+  NO_CROSS_POD_AUTHORIZATION:
+    'Destination is outside the employee pod and no explicit cross-pod authorization exists.',
   REASSIGNMENT_CAUSES_UNDERSTAFFING:
     'Reassignment would cause understaffing elsewhere (cascading coverage failure).',
   TARGET_NOT_COVERED: 'The move would not actually cover the target slot.',
@@ -257,7 +284,9 @@ export function evaluateRecoveryEligibility(
     employeeName: emp?.name ?? employeeId,
     targetAuthorized: false,
     processAuthorized: false,
+    destinationAuthorized: false,
     samePod: false,
+    crossPodRequired: false,
     crossPodAuthorized: false,
   };
 
@@ -276,14 +305,18 @@ export function evaluateRecoveryEligibility(
   const currentAssignment = displayCurrentAssignment(data, current);
   const targetAuthorized = targetAllocation(data, employeeId, brandId, processId);
   const processAuthorized = processAllocation(data, employeeId, processId);
-  const samePod = emp.podId === brand.podId;
   const crossPodAuthorized = crossPodAuthorization(data, employeeId, brandId, processId);
+  const destinationAuthorized = targetAuthorized || crossPodAuthorized;
+  const samePod = emp.podId === brand.podId;
+  const crossPodRequired = !samePod;
   const enriched = {
     ...base,
     currentAssignment,
     targetAuthorized,
     processAuthorized,
+    destinationAuthorized,
     samePod,
+    crossPodRequired,
     crossPodAuthorized,
   };
 
@@ -301,29 +334,51 @@ export function evaluateRecoveryEligibility(
   }
 
   if (current) {
-    // Any move away from an existing assignment needs explicit destination
-    // authorization. Generic process experience does not grant brand access.
-    if (!targetAuthorized && !crossPodAuthorized) {
+    const recoveryType =
+      current.brandId === brandId ? 'same-brand-reassignment' : 'cross-brand-reassignment';
+    // A move away from an existing brand needs explicit destination
+    // authorization. Generic process experience never grants brand access.
+    if (!destinationAuthorized) {
       return {
         ...enriched,
         eligible: false,
-        recoveryType: current.brandId === brandId ? 'same-brand-reassignment' : 'cross-brand-reassignment',
+        recoveryType,
         allocationType: 'temporary-reassignment',
         rejectionCode: 'NO_DESTINATION_AUTHORIZATION',
         rejectionReason: REJECTION_TEXT.NO_DESTINATION_AUTHORIZATION,
       };
     }
+    // Moving to a different brand outside the home pod is a separate
+    // permission boundary, even when a permanent destination allocation exists.
+    if (crossPodRequired && current.brandId !== brandId && !crossPodAuthorized) {
+      return {
+        ...enriched,
+        eligible: false,
+        recoveryType,
+        allocationType: 'temporary-reassignment',
+        rejectionCode: 'NO_CROSS_POD_AUTHORIZATION',
+        rejectionReason: REJECTION_TEXT.NO_CROSS_POD_AUTHORIZATION,
+      };
+    }
     return {
       ...enriched,
       eligible: true,
-      recoveryType: current.brandId === brandId ? 'same-brand-reassignment' : 'cross-brand-reassignment',
+      recoveryType,
       allocationType: 'temporary-reassignment',
     };
   }
 
-  // Unassigned employees: direct target allocation wins, then same-pod process
-  // experience. A different pod still needs an explicit target authorization.
-  if (targetAuthorized) {
+  // Unassigned employees: direct destination authorization wins, then same-pod
+  // process experience. A cross-pod move still needs the pod-boundary grant.
+  if (destinationAuthorized) {
+    if (crossPodRequired && !crossPodAuthorized) {
+      return {
+        ...enriched,
+        eligible: false,
+        rejectionCode: 'NO_CROSS_POD_AUTHORIZATION',
+        rejectionReason: REJECTION_TEXT.NO_CROSS_POD_AUTHORIZATION,
+      };
+    }
     return { ...enriched, eligible: true, recoveryType: 'direct-backup', allocationType: 'temporary-backup' };
   }
   if (samePod && processAuthorized) {
@@ -394,27 +449,35 @@ export function computeDayCoverage(
 }
 
 /**
- * Apply one recovery instruction to a roster entry list (pure, no mutation).
- * A temporary backup only adds cover; it never removes an existing assignment.
- * A temporary reassignment replaces the employee's assignments for that date.
+ * Apply one recovery instruction to a roster entry list and record exactly
+ * which assignments were removed and added. Pure: the baseline is never mutated.
  */
-export function simulateRecovery(
+export function simulateRecoveryDetailed(
   data: RosterData,
   entries: RosterEntry[],
   directive: RecoveryAssignment,
-): RosterEntry[] {
-  const clone = entries.map((e) => ({ ...e, processes: [...e.processes] }));
-  const brand = data.brands.find((b) => b.id === directive.brandId);
-  const next =
+): RecoverySimulation {
+  const baseline = entries.map((e) => ({ ...e, processes: [...e.processes] }));
+  const removed =
     directive.type === 'temporary-reassignment'
-      ? clone.filter((e) => !(e.employeeId === directive.employeeId && e.date === directive.date))
-      : clone;
-  if (!brand) return next;
+      ? baseline
+          .filter((e) => e.employeeId === directive.employeeId && e.date === directive.date)
+          .map((e) => ({ ...e, processes: [...e.processes] }))
+      : [];
+  let next =
+    directive.type === 'temporary-reassignment'
+      ? baseline.filter(
+          (e) => !(e.employeeId === directive.employeeId && e.date === directive.date),
+        )
+      : baseline;
 
+  const brand = data.brands.find((b) => b.id === directive.brandId);
   const emp = data.employees.find((e) => e.id === directive.employeeId);
-  if (!emp || isHardUnavailable(emp, directive.date)) return next;
+  if (!brand || !emp || isHardUnavailable(emp, directive.date)) {
+    return { entries: next, removed, added: [] };
+  }
 
-  next.push({
+  const added: RosterEntry = {
     date: directive.date,
     employeeId: directive.employeeId,
     brandId: directive.brandId,
@@ -427,8 +490,18 @@ export function simulateRecovery(
       directive.date,
     ),
     overriddenOff: isWeeklyOff(emp, directive.date),
-  });
-  return next;
+  };
+  next = [...next, added];
+  return { entries: next, removed, added: [added] };
+}
+
+/** Backwards-compatible helper returning only the simulated entries. */
+export function simulateRecovery(
+  data: RosterData,
+  entries: RosterEntry[],
+  directive: RecoveryAssignment,
+): RosterEntry[] {
+  return simulateRecoveryDetailed(data, entries, directive).entries;
 }
 
 function baselineCoverage(data: RosterData, result: RosterResult, date: string): DayCoverage[] {
@@ -467,11 +540,15 @@ function rejection(
     recoveryType: eligibility.recoveryType ?? (eligibility.currentAssignment ? 'cross-brand-reassignment' : 'direct-backup'),
     allocationType: eligibility.allocationType ?? (eligibility.currentAssignment ? 'temporary-reassignment' : 'temporary-backup'),
     changedAssignments: eligibility.currentAssignment ? 2 : 1,
+    removedAssignments: [],
+    addedAssignments: [],
+    sourceCoverageLoss: 0,
     primaryDisruption: 0,
     weeklyOffOverrides: emp && isWeeklyOff(emp, date) ? 1 : 0,
     additionalStaffing: 0,
     sourceImpact: [],
     sourceProcessesAtMinimum: 0,
+    currentWorkload: 0,
     coverageImpact: [],
     hardConstraintsSatisfied: false,
     valid: false,
@@ -479,6 +556,7 @@ function rejection(
     rejectionReason: eligibility.rejectionReason ?? REJECTION_TEXT[code],
     reasons: [eligibility.rejectionReason ?? REJECTION_TEXT[code]],
     rankingKey: [],
+    rankingExplanation: eligibility.rejectionReason ?? REJECTION_TEXT[code],
     score: Number.MAX_SAFE_INTEGER,
     ...overrides,
   };
@@ -490,7 +568,8 @@ function compareRanking(a: RecoveryCandidate, b: RecoveryCandidate): number {
     const bv = b.rankingKey[i] ?? Number.MAX_SAFE_INTEGER;
     if (av !== bv) return av - bv;
   }
-  return a.name.localeCompare(b.name) || a.employeeId.localeCompare(b.employeeId);
+  // Stable final tie-breaker. Discovery order must never affect the result.
+  return a.employeeId.localeCompare(b.employeeId);
 }
 
 /**
@@ -498,12 +577,13 @@ function compareRanking(a: RecoveryCandidate, b: RecoveryCandidate): number {
  *
  * Ranking is lexicographic, not weighted:
  *   1. fewer changed assignments
- *   2. fewer primary-owned source processes actually displaced
+ *   2. lower actual source coverage loss (scheduled seats lost)
  *   3. fewer source processes left exactly at minimum staffing
- *   4. fewer weekly-off overrides
- *   5. less additional temporary staffing needed
- *   6. lower existing workload
- *   7. deterministic name/id tie-break
+ *   4. fewer primary-owned source processes actually displaced
+ *   5. fewer weekly-off overrides
+ *   6. less additional temporary staffing needed
+ *   7. lower existing workload
+ *   8. deterministic employee-id tie-break
  */
 export function findRecoveryOptions(
   data: RosterData,
@@ -580,7 +660,8 @@ export function findRecoveryOptions(
       id: `recovery-${date}-${employeeId}-${brandId}-${processId}`,
     };
 
-    const simulated = simulateRecovery(data, result.entries, directive);
+    const simulation = simulateRecoveryDetailed(data, result.entries, directive);
+    const simulated = simulation.entries;
     const afterCoverage = computeDayCoverage(data, simulated, date);
     const afterByKey = coverageByKey(afterCoverage);
 
@@ -595,6 +676,13 @@ export function findRecoveryOptions(
         before.scheduled.length !== after.scheduled.length ||
         (after.brandId === brandId && after.processId === processId)
       ) {
+        const effect: RecoveryImpact['effect'] =
+          before.status !== 'covered' && after.status === 'covered'
+            ? 'resolved'
+            : after.status !== 'covered' &&
+                (before.status === 'covered' || after.scheduled.length < before.scheduled.length)
+              ? 'introduced'
+              : 'changed';
         coverageImpact.push({
           brandId: after.brandId,
           brandName: brandName(data, after.brandId),
@@ -604,6 +692,7 @@ export function findRecoveryOptions(
           afterScheduled: after.scheduled.length,
           beforeStatus: before.status,
           afterStatus: after.status,
+          effect,
         });
       }
       if (after.scheduled.length < before.scheduled.length && after.scheduled.length < after.required) {
@@ -671,18 +760,33 @@ export function findRecoveryOptions(
     const sourceProcessesAtMinimum = lostSourceProcesses.filter(
       (s) => s.afterScheduled === s.required,
     ).length;
-    const changedAssignments = current ? (current.brandId === brandId ? 1 : 2) : 1;
+    const sourceCoverageLoss = lostSourceProcesses.reduce(
+      (total, s) => total + Math.max(0, s.beforeScheduled - s.afterScheduled),
+      0,
+    );
+    const changedAssignments = simulation.removed.length + simulation.added.length;
+    const removedAssignments: RecoveryAssignmentChange[] = simulation.removed.map((e) => ({
+      brandId: e.brandId,
+      brandName: brandName(data, e.brandId),
+      processes: e.processes,
+    }));
+    const addedAssignments: RecoveryAssignmentChange[] = simulation.added.map((e) => ({
+      brandId: e.brandId,
+      brandName: brandName(data, e.brandId),
+      processes: e.processes,
+    }));
     const weeklyOffOverrides = isWeeklyOff(emp, date) ? 1 : 0;
     const additionalStaffing =
       eligibility.recoveryType === 'same-pod-backup' ||
-      (eligibility.allocationType === 'temporary-reassignment' && !eligibility.targetAuthorized)
+      (eligibility.allocationType === 'temporary-reassignment' && !eligibility.destinationAuthorized)
         ? 1
         : 0;
     const currentWorkload = result.entries.filter((e) => e.employeeId === employeeId).length;
     const rankingKey = [
       changedAssignments,
-      primaryDisruption,
+      sourceCoverageLoss,
       sourceProcessesAtMinimum,
+      primaryDisruption,
       weeklyOffOverrides,
       additionalStaffing,
       currentWorkload,
@@ -714,16 +818,21 @@ export function findRecoveryOptions(
       recoveryType: eligibility.recoveryType!,
       allocationType: eligibility.allocationType!,
       changedAssignments,
+      removedAssignments,
+      addedAssignments,
+      sourceCoverageLoss,
       primaryDisruption,
       weeklyOffOverrides,
       additionalStaffing,
       sourceImpact,
       sourceProcessesAtMinimum,
+      currentWorkload,
       coverageImpact,
       hardConstraintsSatisfied: true,
       valid: true,
       reasons,
       rankingKey,
+      rankingExplanation: '',
       score: 0,
       directive,
     });
@@ -733,6 +842,13 @@ export function findRecoveryOptions(
   proposals.forEach((p, index) => {
     // Legacy field retained for UI/API compatibility. Ordering is rankingKey.
     p.score = index;
+    p.rankingExplanation =
+      `Rank ${index + 1} (key ${p.rankingKey.join('/')}): ${p.changedAssignments} assignment change(s), ` +
+      `${p.sourceCoverageLoss} source seat(s) lost, ` +
+      `${p.sourceProcessesAtMinimum} source process(es) at minimum, ` +
+      `${p.primaryDisruption} primary disruption(s), ` +
+      `${p.weeklyOffOverrides} weekly-off override(s), ` +
+      `${p.additionalStaffing} extra staffing, workload ${p.currentWorkload}.`;
   });
   rejected.sort((a, b) => a.name.localeCompare(b.name) || a.employeeId.localeCompare(b.employeeId));
 
@@ -767,7 +883,11 @@ export type RecoveryValidationFailureCode =
   | 'ON_LEAVE_OR_COMP_OFF'
   | 'NOT_ELIGIBLE'
   | 'ALLOCATION_TYPE_MISMATCH'
+  | 'MALFORMED_DIRECTIVE'
+  | 'SOURCE_METADATA_MISMATCH'
   | 'DOUBLE_BOOKED'
+  | 'DESTINATION_ASSIGNMENT_MISSING'
+  | 'UNRELATED_ENTRY_CHANGED'
   | 'TARGET_UNDERSTAFFED'
   | 'SOURCE_UNDERSTAFFED'
   | 'PERMANENT_ALLOCATION_MUTATED'
@@ -794,9 +914,47 @@ function conflictKey(c: Conflict): string {
   return [c.type, c.date, c.brandId ?? '', c.processId ?? '', c.employeeId ?? ''].join('|');
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const RECOVERY_TYPES: RecoveryAssignment['type'][] = [
+  'temporary-backup',
+  'temporary-reassignment',
+];
+
+function sameProcessSet(a: readonly ProcessId[], b: readonly ProcessId[]): boolean {
+  if (a.length !== b.length) return false;
+  const left = [...a].sort().join('|');
+  const right = [...b].sort().join('|');
+  return left === right;
+}
+
+function entrySignature(entry: RosterEntry): string {
+  return [
+    entry.date,
+    entry.employeeId,
+    entry.brandId,
+    [...entry.processes].sort().join(','),
+    entry.overriddenOff ? 'override' : 'normal',
+  ].join('|');
+}
+
+function impactEffect(
+  before: DayCoverage,
+  after: DayCoverage,
+): RecoveryImpact['effect'] {
+  if (before.status !== 'covered' && after.status === 'covered') return 'resolved';
+  if (
+    after.status !== 'covered' &&
+    (before.status === 'covered' || after.scheduled.length < before.scheduled.length)
+  ) {
+    return 'introduced';
+  }
+  return 'changed';
+}
+
 /**
  * Independently reconstruct and validate one proposed repair. The candidate's
- * `valid` and `hardConstraintsSatisfied` flags are deliberately ignored.
+ * `valid`, `hardConstraintsSatisfied`, `score` and `reasons` fields are
+ * deliberately ignored; only the directive and the baseline roster are trusted.
  */
 export function validateRecoveryProposal(
   data: RosterData,
@@ -813,11 +971,37 @@ export function validateRecoveryProposal(
     hardConstraintsSatisfied: false,
     reason: message,
     failures: [{ code, message, ...extra }],
-    coverageImpact: proposal.coverageImpact,
+    coverageImpact: proposal.coverageImpact ?? [],
     newConflicts: [],
   });
 
   if (!directive) return fail('NO_DIRECTIVE', 'Proposal has no date-specific recovery directive.');
+  if (
+    typeof directive !== 'object' ||
+    typeof directive.date !== 'string' ||
+    !ISO_DATE.test(directive.date) ||
+    typeof directive.employeeId !== 'string' ||
+    directive.employeeId.length === 0 ||
+    typeof directive.brandId !== 'string' ||
+    directive.brandId.length === 0 ||
+    typeof directive.processId !== 'string' ||
+    directive.processId.length === 0 ||
+    !RECOVERY_TYPES.includes(directive.type)
+  ) {
+    return fail('MALFORMED_DIRECTIVE', 'Recovery directive is malformed or incomplete.');
+  }
+  if (
+    proposal.employeeId !== directive.employeeId ||
+    proposal.allocationType !== directive.type ||
+    proposal.targetAssignment?.brandId !== directive.brandId ||
+    proposal.targetAssignment?.processId !== directive.processId
+  ) {
+    return fail(
+      'MALFORMED_DIRECTIVE',
+      'Candidate metadata does not match the recovery directive.',
+      { employeeId: directive.employeeId },
+    );
+  }
 
   const emp = data.employees.find((e) => e.id === directive.employeeId);
   const brand = data.brands.find((b) => b.id === directive.brandId);
@@ -839,6 +1023,40 @@ export function validateRecoveryProposal(
     return fail('ON_LEAVE_OR_COMP_OFF', `${emp.name} is on approved leave or comp-off on ${directive.date}.`, {
       employeeId: emp.id,
     });
+  }
+
+  const baselineCurrent = currentEntries(result, directive.date, directive.employeeId);
+  if (baselineCurrent.length > 1) {
+    return fail(
+      'DOUBLE_BOOKED',
+      `${emp.name} already has ${baselineCurrent.length} assignments on ${directive.date}.`,
+      { employeeId: emp.id },
+    );
+  }
+  if (directive.type === 'temporary-reassignment') {
+    const current = baselineCurrent[0];
+    if (
+      baselineCurrent.length !== 1 ||
+      !current ||
+      directive.fromBrandId !== current.brandId ||
+      !Array.isArray(directive.fromProcesses) ||
+      !sameProcessSet(directive.fromProcesses, current.processes)
+    ) {
+      return fail(
+        'SOURCE_METADATA_MISMATCH',
+        'Directive source metadata does not match the baseline assignment.',
+        { employeeId: emp.id },
+      );
+    }
+  } else if (
+    directive.fromBrandId != null ||
+    (Array.isArray(directive.fromProcesses) && directive.fromProcesses.length > 0)
+  ) {
+    return fail(
+      'SOURCE_METADATA_MISMATCH',
+      'A temporary backup must not claim a source assignment.',
+      { employeeId: emp.id },
+    );
   }
 
   const eligibility = evaluateRecoveryEligibility(
@@ -872,7 +1090,8 @@ export function validateRecoveryProposal(
       .filter((c) => c.severity === 'error')
       .map(conflictKey),
   );
-  const simulated = simulateRecovery(data, result.entries, directive);
+  const simulation = simulateRecoveryDetailed(data, result.entries, directive);
+  const simulated = simulation.entries;
   const allocationsAfter = JSON.stringify(data.allocations);
   const afterCoverage = computeDayCoverage(data, simulated, directive.date);
   const afterByKey = coverageByKey(afterCoverage);
@@ -886,6 +1105,44 @@ export function validateRecoveryProposal(
     });
   }
 
+  // The simulation must change exactly the candidate's baseline assignment(s)
+  // and add exactly the requested destination assignment.
+  if (directive.type === 'temporary-reassignment') {
+    const removedMatches =
+      simulation.removed.length === baselineCurrent.length &&
+      simulation.removed.every((entry) =>
+        baselineCurrent.some((baseline) => entrySignature(entry) === entrySignature(baseline)),
+      );
+    if (!removedMatches) {
+      failures.push({
+        code: 'SOURCE_METADATA_MISMATCH',
+        message: 'Simulation did not remove exactly the baseline source assignment(s).',
+        employeeId: emp.id,
+      });
+    }
+  } else if (simulation.removed.length > 0) {
+    failures.push({
+      code: 'SOURCE_METADATA_MISMATCH',
+      message: 'A temporary backup must not remove an existing assignment.',
+      employeeId: emp.id,
+    });
+  }
+
+  const added = simulation.added;
+  if (
+    added.length !== 1 ||
+    added[0].brandId !== directive.brandId ||
+    !added[0].processes.includes(directive.processId)
+  ) {
+    failures.push({
+      code: 'DESTINATION_ASSIGNMENT_MISSING',
+      message: 'Simulation did not create the requested destination assignment.',
+      employeeId: emp.id,
+      brandId: brand.id,
+      processId: bp.processId,
+    });
+  }
+
   const candidateEntries = simulated.filter(
     (e) => e.date === directive.date && e.employeeId === directive.employeeId,
   );
@@ -894,6 +1151,38 @@ export function validateRecoveryProposal(
     failures.push({
       code: 'DOUBLE_BOOKED',
       message: `${emp.name} would have ${candidateEntries.length} assignment(s) across ${candidateBrands.size} brand(s) on ${directive.date}.`,
+      employeeId: emp.id,
+    });
+  }
+  const destinationEntry = candidateEntries[0];
+  if (
+    !destinationEntry ||
+    destinationEntry.brandId !== directive.brandId ||
+    !destinationEntry.processes.includes(directive.processId)
+  ) {
+    failures.push({
+      code: 'DESTINATION_ASSIGNMENT_MISSING',
+      message: `${emp.name} is not assigned to ${brand.name} ${bp.processId} after the repair.`,
+      employeeId: emp.id,
+      brandId: brand.id,
+      processId: bp.processId,
+    });
+  }
+
+  // Only the candidate's date-specific assignments may change. This catches
+  // accidental mutation of unrelated roster entries by future simulation code.
+  const untouchedBaseline = result.entries
+    .filter((e) => !(e.date === directive.date && e.employeeId === directive.employeeId))
+    .map(entrySignature)
+    .sort();
+  const untouchedAfter = simulated
+    .filter((e) => !(e.date === directive.date && e.employeeId === directive.employeeId))
+    .map(entrySignature)
+    .sort();
+  if (JSON.stringify(untouchedBaseline) !== JSON.stringify(untouchedAfter)) {
+    failures.push({
+      code: 'UNRELATED_ENTRY_CHANGED',
+      message: 'Recovery simulation changed an unrelated roster entry.',
       employeeId: emp.id,
     });
   }
@@ -927,13 +1216,17 @@ export function validateRecoveryProposal(
   }
 
   // Re-run the independent conflict validator and only flag hard errors that
-  // are genuinely new. Pre-existing unrelated gaps must not invalidate a repair.
+  // are genuinely new. A date-specific destination authorization is the
+  // directive itself; pre-existing unrelated gaps must not invalidate a repair.
   const afterHard = validateRoster(data, simulated, afterCoverage).filter(
     (c) => c.severity === 'error' && c.date === directive.date,
   );
   const newConflicts = afterHard.filter((c) => {
-    if (c.brandId === directive.brandId && c.processId === directive.processId) return false;
-    return !beforeHardKeys.has(conflictKey(c));
+    const isCandidateDestination =
+      c.brandId === directive.brandId &&
+      c.processId === directive.processId &&
+      c.employeeId === directive.employeeId;
+    return !isCandidateDestination && !beforeHardKeys.has(conflictKey(c));
   });
   for (const conflict of newConflicts) {
     failures.push({
@@ -964,6 +1257,7 @@ export function validateRecoveryProposal(
         afterScheduled: slot.scheduled.length,
         beforeStatus: prior.status,
         afterStatus: slot.status,
+        effect: impactEffect(prior, slot),
       });
     }
   }

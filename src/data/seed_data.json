@@ -1146,5 +1146,12 @@
     "2026-12-29",
     "2026-12-30",
     "2026-12-31"
+  ],
+  "crossPodAuthorizations": [
+    {
+      "employeeId": "e36",
+      "brandId": "b04",
+      "processId": "CS"
+    }
   ]
 }

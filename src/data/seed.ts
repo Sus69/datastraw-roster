@@ -327,6 +327,12 @@ export const ALLOCATIONS: Allocation[] = [
   { employeeId: 'e36', brandId: 'b04', processId: 'CS', role: 'secondary' },
 ];
 
+// Explicit pod-boundary permissions. An allocation for a brand/process does
+// not by itself authorize an employee to work outside their home pod.
+export const CROSS_POD_AUTHORIZATIONS: CrossPodAuthorization[] = [
+  { employeeId: 'e36', brandId: 'b04', processId: 'CS' },
+];
+
 export const HOLIDAYS: Holiday[] = [
   { date: '2026-11-24', name: 'Guru Nanak Jayanti' },
   { date: '2026-12-25', name: 'Christmas Day' },

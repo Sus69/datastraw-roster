@@ -62,6 +62,11 @@ def test_brand_semantics_matches_typescript_business_rule(seed_data):
 def test_seed_dataset_has_36_employees(seed_data):
     assert len(seed_data["employees"]) == 36
     assert {"e35", "e36"}.issubset({e["id"] for e in seed_data["employees"]})
+    # e36's permanent TechTrove allocation is also an explicit pod-boundary grant.
+    assert {
+        (a["employeeId"], a["brandId"], a["processId"])
+        for a in seed_data.get("crossPodAuthorizations", [])
+    } >= {("e36", "b04", "CS")}
 
 
 def test_direct_backup(seed_data):
@@ -73,6 +78,8 @@ def test_direct_backup(seed_data):
     assert direct.recovery_type == "direct-backup"
     assert direct.allocation_type == "temporary-backup"
     assert direct.current_assignment is None
+    assert direct.removed_assignments == []
+    assert direct.added_assignments[0]["brand_id"] == "b04"
     assert direct.hard_constraints_satisfied
     assert direct.directive is not None
     assert RosterRecoveryEngine.validate(input_data, entries, direct)["valid"]
@@ -90,6 +97,8 @@ def test_cross_brand_reassignment(seed_data):
     assert proposal.allocation_type == "temporary-reassignment"
     assert proposal.current_assignment is not None
     assert proposal.current_assignment["brand_id"] == "b05"
+    assert proposal.removed_assignments[0]["brand_id"] == "b05"
+    assert proposal.added_assignments[0]["brand_id"] == "b04"
     assert proposal.changed_assignments == 2
     assert all(i.after_scheduled >= i.required for i in proposal.coverage_impact if i.brand_id == "b05")
 
@@ -130,6 +139,7 @@ def test_primary_assignment_disruption(seed_data):
     analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b12", "CS")
     primary = next(p for p in analysis.proposals if p.employee_id == "e32")
     assert primary.primary_disruption == 1
+    assert primary.source_coverage_loss >= 1
     assert primary.source_impact[0].primary_owned_by_candidate is True
     assert primary.source_impact[0].covered_by_other_employees is True
     assert primary.recovery_type == "cross-brand-reassignment"
@@ -202,6 +212,20 @@ def test_double_booking_is_prevented(seed_data):
     assert e15.rejection_code == "CANDIDATE_DOUBLE_BOOKED"
 
 
+def test_validator_detects_duplicate_baseline_assignments(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    clean_entries = [e for e in _day_entries(input_data) if e.employee_id != "e15"]
+    analysis = RosterRecoveryEngine.analyze(input_data, clean_entries, "2026-12-01", "b04", "CS")
+    proposal = next(p for p in analysis.proposals if p.employee_id == "e15")
+    duplicated = clean_entries + [
+        RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b05", processes=["CS"]),
+        RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b06", processes=["CS"]),
+    ]
+    result = RosterRecoveryEngine.validate(input_data, duplicated, proposal)
+    assert result["valid"] is False
+    assert any(f["code"] == "DOUBLE_BOOKED" for f in result["failures"])
+
+
 def test_comp_off_is_rejected(seed_data):
     input_data = _brand_day_input(seed_data, "2026-12-01")
     entries = [e for e in _day_entries(input_data) if e.employee_id != "e15"]
@@ -248,11 +272,123 @@ def test_validator_rejects_invalid_proposal_without_trusting_flags(seed_data):
         additional_staffing=0,
         hard_constraints_satisfied=True,
         valid=True,
+        score=-999,
         directive=directive,
     )
     result = RosterRecoveryEngine.validate(input_data, entries, candidate)
     assert result["valid"] is False
     assert any(f["code"] == "NOT_ELIGIBLE" for f in result["failures"])
+
+
+def test_cross_pod_backup_requires_explicit_cross_pod_authorization(seed_data):
+    data = copy.deepcopy(seed_data)
+    data["assignment_semantics"] = "brand"
+    data["dates"] = ["2026-12-01"]
+    data["cross_pod_authorizations"] = []
+    for emp in data["employees"]:
+        emp["leaves"] = []
+        emp["comp_offs"] = []
+    input_data = SchedulingInput.from_dict(data)
+    # e36 has a permanent b04-CS allocation but belongs to Pod Delta; the
+    # allocation alone must not be treated as pod-boundary permission.
+    entries = [RosterEntry(date="2026-12-01", employee_id="e36", brand_id="b11", processes=["CS"])]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    e36 = next(p for p in analysis.rejected if p.employee_id == "e36")
+    assert e36.rejection_code == "NO_CROSS_POD_AUTHORIZATION"
+
+
+def test_explicit_cross_pod_authorization_allows_direct_backup(seed_data):
+    data = copy.deepcopy(seed_data)
+    data["assignment_semantics"] = "brand"
+    data["dates"] = ["2026-12-01"]
+    for emp in data["employees"]:
+        emp["leaves"] = []
+        emp["comp_offs"] = []
+    input_data = SchedulingInput.from_dict(data)
+    entries = [RosterEntry(date="2026-12-01", employee_id="e10", brand_id="b04", processes=["CS"])]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    e36 = next(p for p in analysis.proposals if p.employee_id == "e36")
+    assert e36.recovery_type == "direct-backup"
+    assert RosterRecoveryEngine.validate(input_data, entries, e36)["valid"]
+
+
+def test_same_pod_membership_without_process_authorization_is_insufficient(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [e for e in _day_entries(input_data) if e.employee_id != "e16"]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    e16 = next(p for p in analysis.rejected if p.employee_id == "e16")
+    assert e16.rejection_code == "NO_COMPATIBLE_PROCESS_ALLOCATION"
+
+
+def test_forged_source_metadata_is_rejected(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [e for e in _day_entries(input_data) if e.employee_id != "e15"]
+    entries.append(RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b05", processes=["CS"]))
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    proposal = next(p for p in analysis.proposals if p.employee_id == "e15")
+    proposal.directive = copy.deepcopy(proposal.directive)
+    proposal.directive["from_brand_id"] = "b06"
+    result = RosterRecoveryEngine.validate(input_data, entries, proposal)
+    assert result["valid"] is False
+    assert any(f["code"] == "SOURCE_METADATA_MISMATCH" for f in result["failures"])
+
+
+def test_forged_employee_and_target_identifiers_are_rejected(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [e for e in _day_entries(input_data) if e.employee_id != "e15"]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    proposal = next(p for p in analysis.proposals if p.employee_id == "e15")
+
+    forged_employee = copy.deepcopy(proposal)
+    forged_employee.employee_id = "e99"
+    forged_employee.directive["employee_id"] = "e99"
+    result = RosterRecoveryEngine.validate(input_data, entries, forged_employee)
+    assert result["valid"] is False
+    assert any(f["code"] == "UNKNOWN_EMPLOYEE" for f in result["failures"])
+
+    forged_target = copy.deepcopy(proposal)
+    forged_target.target_assignment["brand_id"] = "b99"
+    forged_target.directive["brand_id"] = "b99"
+    result = RosterRecoveryEngine.validate(input_data, entries, forged_target)
+    assert result["valid"] is False
+    assert any(f["code"] == "UNKNOWN_TARGET" for f in result["failures"])
+
+
+def test_candidate_metadata_mismatch_is_rejected(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [e for e in _day_entries(input_data) if e.employee_id != "e15"]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    proposal = next(p for p in analysis.proposals if p.employee_id == "e15")
+    proposal.target_assignment = dict(proposal.target_assignment)
+    proposal.target_assignment["brand_id"] = "b06"
+    result = RosterRecoveryEngine.validate(input_data, entries, proposal)
+    assert result["valid"] is False
+    assert any(f["code"] == "MALFORMED_DIRECTIVE" for f in result["failures"])
+
+
+def test_preexisting_unrelated_gap_does_not_invalidate_repair(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [
+        e for e in _day_entries(input_data)
+        if e.employee_id not in ("e01", "e15")
+    ]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    proposal = next(p for p in analysis.proposals if p.employee_id == "e15")
+    result = RosterRecoveryEngine.validate(input_data, entries, proposal)
+    assert result["valid"] is True, result["failures"]
+
+
+def test_ranking_is_lexicographic_and_deterministic(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [e for e in _day_entries(input_data) if e.employee_id != "e15"]
+    first = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    second = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    assert [p.employee_id for p in first.proposals] == [p.employee_id for p in second.proposals]
+    keys = [tuple(p.ranking_key) for p in first.proposals]
+    assert keys == sorted(keys)
+    for left, right in zip(first.proposals, first.proposals[1:]):
+        if left.ranking_key == right.ranking_key:
+            assert left.employee_id < right.employee_id
 
 
 def test_bookbarn_december_21_recovery(seed_data):

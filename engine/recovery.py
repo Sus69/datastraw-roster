@@ -18,6 +18,7 @@ Recovery has three independent stages:
 
 from __future__ import annotations
 
+import datetime
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
@@ -42,6 +43,9 @@ RECOVERY_REJECTION_TEXT = {
     "NO_DESTINATION_AUTHORIZATION": (
         "No explicit destination brand/process authorization; process experience alone is not enough."
     ),
+    "NO_CROSS_POD_AUTHORIZATION": (
+        "Destination is outside the employee pod and no explicit cross-pod authorization exists."
+    ),
     "REASSIGNMENT_CAUSES_UNDERSTAFFING": (
         "Reassignment would cause understaffing elsewhere (cascading coverage failure)."
     ),
@@ -60,6 +64,7 @@ class RecoveryImpact:
     after_scheduled: int
     before_status: str
     after_status: str
+    effect: str = "changed"  # resolved | introduced | changed
 
     def to_dict(self) -> Dict[str, object]:
         return {
@@ -71,6 +76,7 @@ class RecoveryImpact:
             "after_scheduled": self.after_scheduled,
             "before_status": self.before_status,
             "after_status": self.after_status,
+            "effect": self.effect,
         }
 
 
@@ -114,7 +120,9 @@ class RecoveryEligibility:
     allocation_type: Optional[str] = None
     target_authorized: bool = False
     process_authorized: bool = False
+    destination_authorized: bool = False
     same_pod: bool = False
+    cross_pod_required: bool = False
     cross_pod_authorized: bool = False
     rejection_code: Optional[str] = None
     rejection_reason: Optional[str] = None
@@ -129,7 +137,9 @@ class RecoveryEligibility:
             "allocation_type": self.allocation_type,
             "target_authorized": self.target_authorized,
             "process_authorized": self.process_authorized,
+            "destination_authorized": self.destination_authorized,
             "same_pod": self.same_pod,
+            "cross_pod_required": self.cross_pod_required,
             "cross_pod_authorized": self.cross_pod_authorized,
             "rejection_code": self.rejection_code,
             "rejection_reason": self.rejection_reason,
@@ -151,12 +161,17 @@ class RecoveryCandidate:
     coverage_impact: List[RecoveryImpact] = field(default_factory=list)
     source_impact: List[RecoverySourceImpact] = field(default_factory=list)
     source_processes_at_minimum: int = 0
+    source_coverage_loss: int = 0
+    current_workload: int = 0
+    removed_assignments: List[Dict[str, object]] = field(default_factory=list)
+    added_assignments: List[Dict[str, object]] = field(default_factory=list)
     hard_constraints_satisfied: bool = False
     valid: bool = False
     rejection_code: Optional[str] = None
     rejection_reason: Optional[str] = None
     reasons: List[str] = field(default_factory=list)
     ranking_key: List[int] = field(default_factory=list)
+    ranking_explanation: str = ""
     score: int = 0
     directive: Optional[Dict[str, object]] = None
 
@@ -169,18 +184,23 @@ class RecoveryCandidate:
             "recovery_type": self.recovery_type,
             "allocation_type": self.allocation_type,
             "changed_assignments": self.changed_assignments,
+            "removed_assignments": self.removed_assignments,
+            "added_assignments": self.added_assignments,
+            "source_coverage_loss": self.source_coverage_loss,
             "primary_disruption": self.primary_disruption,
             "weekly_off_overrides": self.weekly_off_overrides,
             "additional_staffing": self.additional_staffing,
             "coverage_impact": [i.to_dict() for i in self.coverage_impact],
             "source_impact": [i.to_dict() for i in self.source_impact],
             "source_processes_at_minimum": self.source_processes_at_minimum,
+            "current_workload": self.current_workload,
             "hard_constraints_satisfied": self.hard_constraints_satisfied,
             "valid": self.valid,
             "rejection_code": self.rejection_code,
             "rejection_reason": self.rejection_reason,
             "reasons": self.reasons,
             "ranking_key": self.ranking_key,
+            "ranking_explanation": self.ranking_explanation,
             "score": self.score,
             "directive": self.directive,
         }
@@ -206,6 +226,38 @@ class RecoveryAnalysis:
             "pool_size": self.pool_size,
             "explanation": self.explanation,
         }
+
+
+def _impact_effect(before: DayCoverage, after: DayCoverage) -> str:
+    if before.status != "covered" and after.status == "covered":
+        return "resolved"
+    if after.status != "covered" and (
+        before.status == "covered" or len(after.scheduled) < len(before.scheduled)
+    ):
+        return "introduced"
+    return "changed"
+
+
+def _same_process_set(left: List[ProcessId], right: List[ProcessId]) -> bool:
+    return sorted(left) == sorted(right)
+
+
+def _entry_signature(entry: RosterEntry) -> str:
+    return "|".join(
+        [
+            entry.date,
+            entry.employee_id,
+            entry.brand_id,
+            ",".join(sorted(entry.processes)),
+            "override" if entry.is_weekly_off else "normal",
+        ]
+    )
+
+
+def _directive_source(directive: Dict[str, object]) -> tuple[object, object]:
+    from_brand = directive.get("from_brand_id", directive.get("fromBrandId"))
+    from_processes = directive.get("from_processes", directive.get("fromProcesses"))
+    return from_brand, from_processes
 
 
 class RosterRecoveryEngine:
@@ -379,10 +431,12 @@ class RosterRecoveryEngine:
         current_assignment = cls._display_current(input_data, current)
         target_authorized = cls._target_authorized(input_data, employee_id, brand_id, process_id)
         process_authorized = cls._process_authorized(input_data, employee_id, process_id)
-        same_pod = emp.pod_id == brand.pod_id
         cross_pod_authorized = cls._cross_pod_authorized(
             input_data, employee_id, brand_id, process_id
         )
+        destination_authorized = target_authorized or cross_pod_authorized
+        same_pod = emp.pod_id == brand.pod_id
+        cross_pod_required = not same_pod
         base = RecoveryEligibility(
             employee_id=employee_id,
             employee_name=emp.name,
@@ -390,7 +444,9 @@ class RosterRecoveryEngine:
             current_assignment=current_assignment,
             target_authorized=target_authorized,
             process_authorized=process_authorized,
+            destination_authorized=destination_authorized,
             same_pod=same_pod,
+            cross_pod_required=cross_pod_required,
             cross_pod_authorized=cross_pod_authorized,
         )
 
@@ -422,14 +478,26 @@ class RosterRecoveryEngine:
             )
             base.recovery_type = recovery_type
             base.allocation_type = "temporary-reassignment"
-            if not target_authorized and not cross_pod_authorized:
+            if not destination_authorized:
                 base.rejection_code = "NO_DESTINATION_AUTHORIZATION"
                 base.rejection_reason = RECOVERY_REJECTION_TEXT["NO_DESTINATION_AUTHORIZATION"]
+                return base
+            if (
+                cross_pod_required
+                and current.brand_id != brand_id
+                and not cross_pod_authorized
+            ):
+                base.rejection_code = "NO_CROSS_POD_AUTHORIZATION"
+                base.rejection_reason = RECOVERY_REJECTION_TEXT["NO_CROSS_POD_AUTHORIZATION"]
                 return base
             base.eligible = True
             return base
 
-        if target_authorized:
+        if destination_authorized:
+            if cross_pod_required and not cross_pod_authorized:
+                base.rejection_code = "NO_CROSS_POD_AUTHORIZATION"
+                base.rejection_reason = RECOVERY_REJECTION_TEXT["NO_CROSS_POD_AUTHORIZATION"]
+                return base
             base.eligible = True
             base.recovery_type = "direct-backup"
             base.allocation_type = "temporary-backup"
@@ -480,9 +548,10 @@ class RosterRecoveryEngine:
         return processes
 
     @classmethod
-    def _simulate(
+    def _simulate_detailed(
         cls, input_data: SchedulingInput, entries: List[RosterEntry], directive: Dict[str, object]
-    ) -> List[RosterEntry]:
+    ) -> Dict[str, object]:
+        """Return immutable simulated entries plus the exact removed/added assignments."""
         emp_id = str(directive["employee_id"])
         date = str(directive["date"])
         brand_id = str(directive["brand_id"])
@@ -491,28 +560,40 @@ class RosterRecoveryEngine:
         brand = next((b for b in input_data.brands if b.id == brand_id), None)
         emp = next((e for e in input_data.employees if e.id == emp_id), None)
 
-        next_entries = [RosterEntry(**e.to_dict()) for e in entries]
+        baseline = [RosterEntry(**e.to_dict()) for e in entries]
+        removed = (
+            [RosterEntry(**e.to_dict()) for e in baseline]
+            if allocation_type == "temporary-reassignment"
+            else []
+        )
+        removed = [e for e in removed if e.employee_id == emp_id and e.date == date]
+        next_entries = [RosterEntry(**e.to_dict()) for e in baseline]
         if allocation_type == "temporary-reassignment":
             next_entries = [
                 e for e in next_entries if not (e.employee_id == emp_id and e.date == date)
             ]
         if brand is None or emp is None or date in emp.leaves or date in emp.comp_offs:
-            return next_entries
+            return {"entries": next_entries, "removed": removed, "added": []}
 
         processes = cls._recovery_processes(
             input_data, emp_id, brand, process_id, allocation_type, date
         )
-        next_entries.append(
-            RosterEntry(
-                date=date,
-                employee_id=emp_id,
-                brand_id=brand_id,
-                processes=processes,
-                is_weekly_off=get_weekday(date) in emp.weekly_off,
-                is_backup=allocation_type == "temporary-backup",
-            )
+        added = RosterEntry(
+            date=date,
+            employee_id=emp_id,
+            brand_id=brand_id,
+            processes=processes,
+            is_weekly_off=get_weekday(date) in emp.weekly_off,
+            is_backup=allocation_type == "temporary-backup",
         )
-        return next_entries
+        next_entries.append(added)
+        return {"entries": next_entries, "removed": removed, "added": [added]}
+
+    @classmethod
+    def _simulate(
+        cls, input_data: SchedulingInput, entries: List[RosterEntry], directive: Dict[str, object]
+    ) -> List[RosterEntry]:
+        return cls._simulate_detailed(input_data, entries, directive)["entries"]  # type: ignore[return-value]
 
     @classmethod
     def _rejection(
@@ -542,6 +623,10 @@ class RosterRecoveryEngine:
             "allocation_type": eligibility.allocation_type
             or ("temporary-reassignment" if eligibility.current_assignment else "temporary-backup"),
             "changed_assignments": 2 if eligibility.current_assignment else 1,
+            "removed_assignments": [],
+            "added_assignments": [],
+            "source_coverage_loss": 0,
+            "current_workload": 0,
             "primary_disruption": 0,
             "weekly_off_overrides": 1 if emp and get_weekday(date) in emp.weekly_off else 0,
             "additional_staffing": 0,
@@ -555,6 +640,7 @@ class RosterRecoveryEngine:
             or RECOVERY_REJECTION_TEXT[code],
             "reasons": [eligibility.rejection_reason or RECOVERY_REJECTION_TEXT[code]],
             "ranking_key": [],
+            "ranking_explanation": eligibility.rejection_reason or RECOVERY_REJECTION_TEXT[code],
             "score": 2**31 - 1,
             "directive": None,
         }
@@ -635,7 +721,8 @@ class RosterRecoveryEngine:
                 "id": f"recovery-{date}-{employee_id}-{brand_id}-{process_id}",
             }
 
-            simulated = cls._simulate(input_data, entries, directive)
+            simulation = cls._simulate_detailed(input_data, entries, directive)
+            simulated = simulation["entries"]  # type: ignore[assignment]
             after = cls._coverage(input_data, simulated, date)
             after_by_key = {(c.brand_id, c.process_id): c for c in after}
 
@@ -665,6 +752,7 @@ class RosterRecoveryEngine:
                             after_scheduled=len(slot.scheduled),
                             before_status=prior.status,
                             after_status=slot.status,
+                            effect=_impact_effect(prior, slot),
                         )
                     )
                 if len(slot.scheduled) < len(prior.scheduled) and len(slot.scheduled) < slot.required:
@@ -767,22 +855,47 @@ class RosterRecoveryEngine:
             source_processes_at_minimum = sum(
                 1 for s in lost_source_processes if s.after_scheduled == s.required
             )
-            changed = 1 if current_entry is None or current_entry.brand_id == brand_id else 2
+            source_coverage_loss = sum(
+                max(0, s.before_scheduled - s.after_scheduled)
+                for s in lost_source_processes
+            )
+            removed_changes = [
+                {
+                    "brand_id": e.brand_id,
+                    "brand_name": next(
+                        (b.name for b in input_data.brands if b.id == e.brand_id), e.brand_id
+                    ),
+                    "processes": list(e.processes),
+                }
+                for e in simulation["removed"]  # type: ignore[union-attr]
+            ]
+            added_changes = [
+                {
+                    "brand_id": e.brand_id,
+                    "brand_name": next(
+                        (b.name for b in input_data.brands if b.id == e.brand_id), e.brand_id
+                    ),
+                    "processes": list(e.processes),
+                }
+                for e in simulation["added"]  # type: ignore[union-attr]
+            ]
+            changed = len(removed_changes) + len(added_changes)
             weekly_off = 1 if get_weekday(date) in emp.weekly_off else 0
             additional = (
                 1
                 if eligibility.recovery_type == "same-pod-backup"
                 or (
                     eligibility.allocation_type == "temporary-reassignment"
-                    and not eligibility.target_authorized
+                    and not eligibility.destination_authorized
                 )
                 else 0
             )
             current_workload = sum(1 for entry in entries if entry.employee_id == employee_id)
             ranking_key = [
                 changed,
-                primary_disruption,
+                source_coverage_loss,
                 source_processes_at_minimum,
+                primary_disruption,
                 weekly_off,
                 additional,
                 current_workload,
@@ -820,6 +933,9 @@ class RosterRecoveryEngine:
                     recovery_type=eligibility.recovery_type or "direct-backup",
                     allocation_type=eligibility.allocation_type or "temporary-backup",
                     changed_assignments=changed,
+                    removed_assignments=removed_changes,
+                    added_assignments=added_changes,
+                    source_coverage_loss=source_coverage_loss,
                     primary_disruption=primary_disruption,
                     weekly_off_overrides=weekly_off,
                     additional_staffing=additional,
@@ -835,12 +951,20 @@ class RosterRecoveryEngine:
                 )
             )
 
-        proposals.sort(key=lambda p: (
-            tuple(p.ranking_key), p.name, p.employee_id
-        ))
+        proposals.sort(key=lambda p: (tuple(p.ranking_key), p.employee_id))
         for index, proposal in enumerate(proposals):
             # Legacy field retained for API compatibility. Ordering is ranking_key.
             proposal.score = index
+            proposal.ranking_explanation = (
+                f"Rank {index + 1} (key {'/'.join(map(str, proposal.ranking_key))}): "
+                f"{proposal.changed_assignments} assignment change(s), "
+                f"{proposal.source_coverage_loss} source seat(s) lost, "
+                f"{proposal.source_processes_at_minimum} source process(es) at minimum, "
+                f"{proposal.primary_disruption} primary disruption(s), "
+                f"{proposal.weekly_off_overrides} weekly-off override(s), "
+                f"{proposal.additional_staffing} extra staffing, "
+                f"workload {proposal.current_workload}."
+            )
         rejected.sort(key=lambda p: (p.name, p.employee_id))
 
         explanation = ""
@@ -895,12 +1019,39 @@ class RosterRecoveryEngine:
 
         if not directive:
             return failure("NO_DIRECTIVE", "Proposal has no date-specific recovery directive.")
+        if not isinstance(directive, dict):
+            return failure("MALFORMED_DIRECTIVE", "Recovery directive is malformed or incomplete.")
+        required_keys = ("date", "employee_id", "brand_id", "process_id", "type")
+        if any(not isinstance(directive.get(key), str) or not directive.get(key) for key in required_keys):
+            return failure("MALFORMED_DIRECTIVE", "Recovery directive is malformed or incomplete.")
+        if str(directive["type"]) not in ("temporary-backup", "temporary-reassignment"):
+            return failure("MALFORMED_DIRECTIVE", "Recovery directive has an unknown assignment type.")
+        try:
+            datetime.date.fromisoformat(str(directive["date"]))
+        except ValueError:
+            return failure("MALFORMED_DIRECTIVE", "Recovery directive has an invalid date.")
 
         emp_id = str(directive["employee_id"])
         date = str(directive["date"])
         brand_id = str(directive["brand_id"])
         process_id = str(directive["process_id"])
         allocation_type = str(directive["type"])
+        target_assignment = (
+            candidate.target_assignment
+            if isinstance(candidate.target_assignment, dict)
+            else {}
+        )
+        if (
+            candidate.employee_id != emp_id
+            or candidate.allocation_type != allocation_type
+            or target_assignment.get("brand_id") != brand_id
+            or target_assignment.get("process_id") != process_id
+        ):
+            return failure(
+                "MALFORMED_DIRECTIVE",
+                "Candidate metadata does not match the recovery directive.",
+                employee_id=emp_id,
+            )
         emp = next((e for e in input_data.employees if e.id == emp_id), None)
         brand = next((b for b in input_data.brands if b.id == brand_id), None)
         bp = next((p for p in brand.processes if p.process_id == process_id), None) if brand else None
@@ -925,6 +1076,40 @@ class RosterRecoveryEngine:
                 employee_id=emp_id,
             )
 
+        baseline_current = [
+            e for e in entries if e.date == date and e.employee_id == emp_id
+        ]
+        if len(baseline_current) > 1:
+            return failure(
+                "DOUBLE_BOOKED",
+                f"{emp.name} already has {len(baseline_current)} assignments on {date}.",
+                employee_id=emp_id,
+            )
+        from_brand, from_processes = _directive_source(directive)
+        if allocation_type == "temporary-reassignment":
+            current = baseline_current[0] if baseline_current else None
+            if (
+                len(baseline_current) != 1
+                or current is None
+                or from_brand != current.brand_id
+                or not isinstance(from_processes, list)
+                or not all(isinstance(p, str) for p in from_processes)
+                or not _same_process_set(list(from_processes), current.processes)
+            ):
+                return failure(
+                    "SOURCE_METADATA_MISMATCH",
+                    "Directive source metadata does not match the baseline assignment.",
+                    employee_id=emp_id,
+                )
+        elif from_brand is not None or (
+            isinstance(from_processes, list) and len(from_processes) > 0
+        ):
+            return failure(
+                "SOURCE_METADATA_MISMATCH",
+                "A temporary backup must not claim a source assignment.",
+                employee_id=emp_id,
+            )
+
         eligibility = cls.evaluate_eligibility(
             input_data, entries, date, brand_id, process_id, emp_id
         )
@@ -941,7 +1126,10 @@ class RosterRecoveryEngine:
             )
 
         allocations_before = [a.to_dict() for a in input_data.allocations]
-        simulated = cls._simulate(input_data, entries, directive)
+        simulation = cls._simulate_detailed(input_data, entries, directive)
+        simulated = simulation["entries"]  # type: ignore[assignment]
+        removed = simulation["removed"]  # type: ignore[assignment]
+        added = simulation["added"]  # type: ignore[assignment]
         allocations_after = [a.to_dict() for a in input_data.allocations]
         before_lookup = {
             (c.brand_id, c.process_id): c
@@ -960,6 +1148,40 @@ class RosterRecoveryEngine:
                 "employee_id": emp_id,
             })
 
+        if allocation_type == "temporary-reassignment":
+            removed_matches = (
+                len(removed) == len(baseline_current)
+                and all(
+                    any(_entry_signature(entry) == _entry_signature(base) for base in baseline_current)
+                    for entry in removed
+                )
+            )
+            if not removed_matches:
+                failures.append({
+                    "code": "SOURCE_METADATA_MISMATCH",
+                    "message": "Simulation did not remove exactly the baseline source assignment(s).",
+                    "employee_id": emp_id,
+                })
+        elif removed:
+            failures.append({
+                "code": "SOURCE_METADATA_MISMATCH",
+                "message": "A temporary backup must not remove an existing assignment.",
+                "employee_id": emp_id,
+            })
+
+        if (
+            len(added) != 1
+            or added[0].brand_id != brand_id
+            or process_id not in added[0].processes
+        ):
+            failures.append({
+                "code": "DESTINATION_ASSIGNMENT_MISSING",
+                "message": "Simulation did not create the requested destination assignment.",
+                "employee_id": emp_id,
+                "brand_id": brand_id,
+                "process_id": process_id,
+            })
+
         candidate_entries = [
             e for e in simulated if e.date == date and e.employee_id == emp_id
         ]
@@ -971,6 +1193,36 @@ class RosterRecoveryEngine:
                     f"{emp.name} would have {len(candidate_entries)} assignment(s) "
                     f"across {len(candidate_brands)} brand(s) on {date}."
                 ),
+                "employee_id": emp_id,
+            })
+        destination_entry = candidate_entries[0] if candidate_entries else None
+        if (
+            destination_entry is None
+            or destination_entry.brand_id != brand_id
+            or process_id not in destination_entry.processes
+        ):
+            failures.append({
+                "code": "DESTINATION_ASSIGNMENT_MISSING",
+                "message": f"{emp.name} is not assigned to {brand.name} {process_id} after the repair.",
+                "employee_id": emp_id,
+                "brand_id": brand_id,
+                "process_id": process_id,
+            })
+
+        untouched_baseline = sorted(
+            _entry_signature(e)
+            for e in entries
+            if not (e.date == date and e.employee_id == emp_id)
+        )
+        untouched_after = sorted(
+            _entry_signature(e)
+            for e in simulated
+            if not (e.date == date and e.employee_id == emp_id)
+        )
+        if untouched_baseline != untouched_after:
+            failures.append({
+                "code": "UNRELATED_ENTRY_CHANGED",
+                "message": "Recovery simulation changed an unrelated roster entry.",
                 "employee_id": emp_id,
             })
 
@@ -1044,6 +1296,7 @@ class RosterRecoveryEngine:
                         after_scheduled=len(slot.scheduled),
                         before_status=prior.status,
                         after_status=slot.status,
+                        effect=_impact_effect(prior, slot),
                     ).to_dict()
                 )
 

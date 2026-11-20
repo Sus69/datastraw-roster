@@ -83,8 +83,7 @@ class SchedulingRequestHandler(BaseHTTPRequestHandler):
                 sched_input = SchedulingInput.from_dict(data)
                 engine = SchedulingEngine(sched_input)
                 result = engine.solve()
-                status_code = 200 if result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE) else 422
-                self._write_json(status_code, result.to_dict())
+                self._write_json(200, result.to_dict())
 
             elif self.path == "/api/reoptimize":
                 data = self._read_json()

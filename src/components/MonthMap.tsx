@@ -9,6 +9,13 @@ export interface MonthMapProps {
   result: RosterResult;
   entryByKey: Map<string, { brandId: string; processes: ProcessId[]; overriddenOff: boolean }>;
   onSelectCell: (employeeId: string, date: string) => void;
+  search?: string;
+  podFilter?: string;
+  hideUnscheduled?: boolean;
+  highlightGapsOnly?: boolean;
+  colorBy?: 'process' | 'brand';
+  collapsedPods?: Record<string, boolean>;
+  onTogglePod?: (podId: string) => void;
 }
 
 function getProcessClass(processes: ProcessId[]): string {
@@ -24,14 +31,60 @@ function getProcessClass(processes: ProcessId[]): string {
 }
 
 export function MonthMap(props: MonthMapProps) {
-  const { data, result, entryByKey, onSelectCell } = props;
-  const brandById = new Map(data.brands.map((b) => [b.id, b]));
+  const {
+    data,
+    result,
+    entryByKey,
+    onSelectCell,
+    search = '',
+    podFilter = 'all',
+    hideUnscheduled = false,
+    highlightGapsOnly = false,
+    colorBy = 'process',
+    collapsedPods = {},
+    onTogglePod,
+  } = props;
+
+  const brandById = React.useMemo(() => new Map(data.brands.map((b) => [b.id, b])), [data.brands]);
+
+  // Identify all dates with coverage shortages
+  const gapDates = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const cov of result.coverage) {
+      if (cov.status === 'gap' || cov.status === 'understaffed') {
+        set.add(cov.date);
+      }
+    }
+    return set;
+  }, [result.coverage]);
+
+  // Track employees with scheduled shifts
+  const scheduledEmpIds = React.useMemo(() => {
+    return new Set(result.entries.map((e) => e.employeeId));
+  }, [result.entries]);
+
+  // Filter pods
+  const visiblePods = PODS.filter((pod) => podFilter === 'all' || !podFilter || pod.id === podFilter);
+
+  // Compute matched employees count
+  let totalMatchedEmployees = 0;
+  for (const pod of visiblePods) {
+    const matched = data.employees.filter((emp) => {
+      if (emp.podId !== pod.id) return false;
+      if (search && !emp.name.toLowerCase().includes(search.toLowerCase())) return false;
+      if (hideUnscheduled && !scheduledEmpIds.has(emp.id)) return false;
+      return true;
+    });
+    totalMatchedEmployees += matched.length;
+  }
 
   return (
     <div className="month-map-wrapper">
       <div className="month-map-head">
         <div>
-          <h3 className="month-map-title">Month map ({data.employees.length} staff · {result.days.length} days)</h3>
+          <h3 className="month-map-title">
+            Month map ({totalMatchedEmployees} of {data.employees.length} staff · {result.days.length} days)
+          </h3>
           <p className="muted small" style={{ margin: '2px 0 0' }}>
             Full workforce overview. Click any cell to jump to that shift in the detail grid.
           </p>
@@ -39,18 +92,25 @@ export function MonthMap(props: MonthMapProps) {
       </div>
 
       <div className="month-map-container">
-        <table className="month-map-table">
+        <table className={`month-map-table ${highlightGapsOnly ? 'highlight-gaps-mode' : ''}`}>
+          <colgroup>
+            <col className="map-col-emp" />
+            {result.days.map((d) => (
+              <col key={d} className="map-col-day" />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               <th className="map-sticky-col map-header-corner">Pod / employee</th>
               {result.days.map((d) => {
                 const dt = new Date(`${d}T12:00:00`);
                 const isSun = dt.getDay() === 0;
+                const isGap = gapDates.has(d);
                 return (
                   <th
                     key={d}
-                    className={`map-day-header ${isSun ? 'map-sun' : ''}`}
-                    title={`${d} (${WEEKDAYS[dt.getDay()]})`}
+                    className={`map-day-header ${isSun ? 'map-sun' : ''} ${isGap ? 'has-gap' : ''}`}
+                    title={`${d} (${WEEKDAYS[dt.getDay()]})${isGap ? ' — Coverage shortage' : ''}`}
                   >
                     <span className="map-day-num">{dt.getDate()}</span>
                   </th>
@@ -59,111 +119,134 @@ export function MonthMap(props: MonthMapProps) {
             </tr>
           </thead>
           <tbody>
-            {PODS.map((pod) => {
-              const podEmployees = data.employees.filter((e) => e.podId === pod.id);
+            {visiblePods.map((pod) => {
+              const podEmployees = data.employees.filter((e) => {
+                if (e.podId !== pod.id) return false;
+                if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
+                if (hideUnscheduled && !scheduledEmpIds.has(e.id)) return false;
+                return true;
+              });
+
               if (podEmployees.length === 0) return null;
+
+              const isCollapsed = Boolean(collapsedPods[pod.id]);
 
               return (
                 <React.Fragment key={pod.id}>
-                  {/* Pod Group Header Row */}
-                  <tr className="map-pod-group-row">
+                  {/* Pod Group Header Row (clickable to collapse/expand) */}
+                  <tr
+                    className="map-pod-group-row"
+                    onClick={() => onTogglePod?.(pod.id)}
+                    style={{ cursor: 'pointer' }}
+                    title={`Click to ${isCollapsed ? 'expand' : 'collapse'} ${pod.name}`}
+                  >
                     <td className="map-sticky-col map-pod-name" colSpan={result.days.length + 1}>
+                      <span className="map-pod-toggle-icon">{isCollapsed ? '[+]' : '[-]'}</span>
                       <span className="map-pod-tag">{pod.name}</span>
                       <span className="map-pod-count">({podEmployees.length} staff)</span>
+                      <span className="map-pod-toggle-hint">
+                        {isCollapsed ? 'Click to expand' : 'Click to collapse'}
+                      </span>
                     </td>
                   </tr>
 
                   {/* Employee Rows under Pod */}
-                  {podEmployees.map((emp) => (
-                    <tr key={emp.id} className="map-emp-row">
-                      <td
-                        className="map-sticky-col map-emp-label"
-                        onClick={() => onSelectCell(emp.id, result.days[0])}
-                        title={`Click to view ${emp.name} in detail grid`}
-                      >
-                        <span className="map-emp-name-text">{emp.name}</span>
-                      </td>
+                  {!isCollapsed &&
+                    podEmployees.map((emp) => (
+                      <tr key={emp.id} className="map-emp-row">
+                        <td
+                          className="map-sticky-col map-emp-label"
+                          onClick={() => onSelectCell(emp.id, result.days[0])}
+                          title={`Click to view ${emp.name} in detail grid`}
+                        >
+                          <span className="map-emp-name-text">{emp.name}</span>
+                        </td>
 
-                      {result.days.map((d) => {
-                        const entry = entryByKey.get(`${emp.id}|${d}`);
-                        const holiday = isHoliday(d);
+                        {result.days.map((d) => {
+                          const entry = entryByKey.get(`${emp.id}|${d}`);
+                          const holiday = isHoliday(d);
+                          const isGapDay = gapDates.has(d);
 
-                        if (entry) {
-                          const brand = brandById.get(entry.brandId);
-                          const procCls = getProcessClass(entry.processes);
-                          const procNames = entry.processes.map((p) => processLabel(p)).join(', ');
-                          const isOverridden = entry.overriddenOff;
-                          const tip = `${emp.name} — ${d}: ${brand?.name ?? entry.brandId} (${procNames})${
-                            isOverridden ? ' [Weekly off overridden]' : ''
-                          }`;
+                          if (entry) {
+                            const brand = brandById.get(entry.brandId);
+                            const procCls = getProcessClass(entry.processes);
+                            const brandCls = `brand-${entry.brandId.replace(/[^a-zA-Z0-9]/g, '-')}`;
+                            const colorCls = colorBy === 'brand' ? brandCls : procCls;
+                            const procNames = entry.processes.map((p) => processLabel(p)).join(', ');
+                            const isOverridden = entry.overriddenOff;
+                            const tip = `${emp.name} — ${d}: ${brand?.name ?? entry.brandId} (${procNames})${
+                              isOverridden ? ' [Weekly off overridden]' : ''
+                            }${isGapDay ? ' (Day has shortages)' : ''}`;
 
+                            return (
+                              <td
+                                key={d}
+                                className={`map-cell-td ${isGapDay ? 'has-gap' : ''}`}
+                                onClick={() => onSelectCell(emp.id, d)}
+                              >
+                                <div
+                                  className={`map-square work ${colorCls} ${isOverridden ? 'overridden' : ''} ${
+                                    isGapDay ? 'day-shortage-cell' : ''
+                                  }`}
+                                  title={tip}
+                                />
+                              </td>
+                            );
+                          }
+
+                          if (isHardUnavailable(emp, d)) {
+                            const reason = emp.leaves.includes(d) ? 'Planned leave' : 'Comp-off';
+                            const tip = `${emp.name} — ${d}: ${reason}`;
+                            return (
+                              <td
+                                key={d}
+                                className={`map-cell-td ${isGapDay ? 'has-gap' : ''}`}
+                                onClick={() => onSelectCell(emp.id, d)}
+                              >
+                                <div className="map-square leave" title={tip} />
+                              </td>
+                            );
+                          }
+
+                          if (holiday) {
+                            const tip = `${emp.name} — ${d}: Public holiday (${holiday.name})`;
+                            return (
+                              <td
+                                key={d}
+                                className={`map-cell-td ${isGapDay ? 'has-gap' : ''}`}
+                                onClick={() => onSelectCell(emp.id, d)}
+                              >
+                                <div className="map-square holiday" title={tip} />
+                              </td>
+                            );
+                          }
+
+                          if (isWeeklyOff(emp, d)) {
+                            const tip = `${emp.name} — ${d}: Preferred weekly off`;
+                            return (
+                              <td
+                                key={d}
+                                className={`map-cell-td ${isGapDay ? 'has-gap' : ''}`}
+                                onClick={() => onSelectCell(emp.id, d)}
+                              >
+                                <div className="map-square off" title={tip} />
+                              </td>
+                            );
+                          }
+
+                          const tip = `${emp.name} — ${d}: Not scheduled (Reserve capacity)`;
                           return (
                             <td
                               key={d}
-                              className="map-cell-td"
+                              className={`map-cell-td ${isGapDay ? 'has-gap' : ''}`}
                               onClick={() => onSelectCell(emp.id, d)}
                             >
-                              <div
-                                className={`map-square work ${procCls} ${isOverridden ? 'overridden' : ''}`}
-                                title={tip}
-                              />
+                              <div className="map-square idle" title={tip} />
                             </td>
                           );
-                        }
-
-                        if (isHardUnavailable(emp, d)) {
-                          const reason = emp.leaves.includes(d) ? 'Planned leave' : 'Comp-off';
-                          const tip = `${emp.name} — ${d}: ${reason}`;
-                          return (
-                            <td
-                              key={d}
-                              className="map-cell-td"
-                              onClick={() => onSelectCell(emp.id, d)}
-                            >
-                              <div className="map-square leave" title={tip} />
-                            </td>
-                          );
-                        }
-
-                        if (holiday) {
-                          const tip = `${emp.name} — ${d}: Public holiday (${holiday.name})`;
-                          return (
-                            <td
-                              key={d}
-                              className="map-cell-td"
-                              onClick={() => onSelectCell(emp.id, d)}
-                            >
-                              <div className="map-square holiday" title={tip} />
-                            </td>
-                          );
-                        }
-
-                        if (isWeeklyOff(emp, d)) {
-                          const tip = `${emp.name} — ${d}: Preferred weekly off`;
-                          return (
-                            <td
-                              key={d}
-                              className="map-cell-td"
-                              onClick={() => onSelectCell(emp.id, d)}
-                            >
-                              <div className="map-square off" title={tip} />
-                            </td>
-                          );
-                        }
-
-                        const tip = `${emp.name} — ${d}: Not scheduled (Reserve capacity)`;
-                        return (
-                          <td
-                            key={d}
-                            className="map-cell-td"
-                            onClick={() => onSelectCell(emp.id, d)}
-                          >
-                            <div className="map-square idle" title={tip} />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                        })}
+                      </tr>
+                    ))}
                 </React.Fragment>
               );
             })}
@@ -171,19 +254,37 @@ export function MonthMap(props: MonthMapProps) {
         </table>
       </div>
 
-      <div className="map-legend">
-        <span className="lg-label">Legend:</span>
-        <span className="lg-item"><span className="map-sq-sample work proc-cs" /> Customer support</span>
-        <span className="lg-item"><span className="map-sq-sample work proc-acc" /> Abandoned cart</span>
-        <span className="lg-item"><span className="map-sq-sample work proc-ret" /> Retention</span>
-        <span className="lg-item"><span className="map-sq-sample work proc-ndr" /> Non-delivery</span>
-        <span className="lg-item"><span className="map-sq-sample work proc-multi" /> Multi</span>
-        <span className="lg-item"><span className="map-sq-sample work overridden" /> Override</span>
-        <span className="lg-item"><span className="map-sq-sample leave" /> Leave</span>
-        <span className="lg-item"><span className="map-sq-sample holiday" /> Holiday</span>
-        <span className="lg-item"><span className="map-sq-sample off" /> Weekly off</span>
-        <span className="lg-item"><span className="map-sq-sample idle" /> Reserve</span>
-      </div>
+      {/* Dynamic Legend */}
+      {colorBy === 'brand' ? (
+        <div className="map-legend">
+          <span className="lg-label">Brands:</span>
+          {data.brands.map((b) => (
+            <span key={b.id} className="lg-item">
+              <span className={`map-sq-sample work brand-${b.id.replace(/[^a-zA-Z0-9]/g, '-')}`} /> {b.name}
+            </span>
+          ))}
+          <span className="lg-sep">·</span>
+          <span className="lg-item"><span className="map-sq-sample work overridden" /> Override</span>
+          <span className="lg-item"><span className="map-sq-sample leave" /> Leave</span>
+          <span className="lg-item"><span className="map-sq-sample holiday" /> Holiday</span>
+          <span className="lg-item"><span className="map-sq-sample off" /> Weekly off</span>
+          <span className="lg-item"><span className="map-sq-sample idle" /> Reserve</span>
+        </div>
+      ) : (
+        <div className="map-legend">
+          <span className="lg-label">Legend:</span>
+          <span className="lg-item"><span className="map-sq-sample work proc-cs" /> Customer support</span>
+          <span className="lg-item"><span className="map-sq-sample work proc-acc" /> Abandoned cart</span>
+          <span className="lg-item"><span className="map-sq-sample work proc-ret" /> Retention</span>
+          <span className="lg-item"><span className="map-sq-sample work proc-ndr" /> Non-delivery</span>
+          <span className="lg-item"><span className="map-sq-sample work proc-multi" /> Multi</span>
+          <span className="lg-item"><span className="map-sq-sample work overridden" /> Override</span>
+          <span className="lg-item"><span className="map-sq-sample leave" /> Leave</span>
+          <span className="lg-item"><span className="map-sq-sample holiday" /> Holiday</span>
+          <span className="lg-item"><span className="map-sq-sample off" /> Weekly off</span>
+          <span className="lg-item"><span className="map-sq-sample idle" /> Reserve</span>
+        </div>
+      )}
     </div>
   );
 }

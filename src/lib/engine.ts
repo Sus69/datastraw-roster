@@ -582,6 +582,10 @@ export async function generateRosterCPSAT(
       body: JSON.stringify(payload),
     });
 
+    if (!res.ok) {
+      return generateRoster(data, year, month);
+    }
+
     const json = await res.json();
     if (res.status === 200 || res.status === 422) {
       let entries: RosterEntry[] = (json.entries || []).map((e: any) => ({

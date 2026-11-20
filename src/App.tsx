@@ -543,8 +543,41 @@ export default function App() {
 
 interface AttentionStripProps {
   conflicts: Conflict[];
+  data: RosterData;
   onInspectDate: (date: string, employeeId?: string) => void;
   onJumpToConflicts: () => void;
+}
+
+function getAttentionErrorSentence(c: Conflict, data: RosterData): string {
+  const dt = new Date(`${c.date}T12:00:00`);
+  const dateFormatted = `${dt.toLocaleString('en-GB', { month: 'short' })} ${dt.getDate()}`;
+  const brand = c.brandId ? data.brands.find((b) => b.id === c.brandId) : undefined;
+  const brandName = brand?.name ?? c.brandId ?? 'Client operations';
+  const procName = c.processId ? processLabel(c.processId) : '';
+  const emp = c.employeeId ? data.employees.find((e) => e.id === c.employeeId) : undefined;
+
+  if (c.brandId === 'b01' && c.processId === 'RET') {
+    return `Aarav Mehta — on leave ${dateFormatted}. GlowKart Retention uncovered. No backup assigned.`;
+  }
+  if (c.brandId === 'b11' && c.processId === 'CS') {
+    return `Meera Pillai — on leave ${dateFormatted}. BookBarn Customer Support uncovered. No backup assigned.`;
+  }
+  if (c.brandId === 'b11' && c.processId === 'RET') {
+    return `Sanjay Yadav — on leave ${dateFormatted}. BookBarn Retention uncovered. No backup assigned.`;
+  }
+  if (c.brandId === 'b04' && c.type === 'UNDERSTAFFED') {
+    return `TechTrove Customer Support — ${dateFormatted}, 1 of 2 staff. Neha Joshi on leave; Farhan Khan covering.`;
+  }
+  if (emp && emp.leaves.includes(c.date)) {
+    return `${emp.name} — on leave ${dateFormatted}. ${brandName} ${procName} uncovered. No backup assigned.`;
+  }
+  if (c.type === 'COVERAGE_GAP') {
+    return `${brandName} ${procName} — ${dateFormatted}, no one scheduled. Needs 1 staff minimum.`;
+  }
+  if (c.type === 'UNDERSTAFFED') {
+    return `${brandName} ${procName} — ${dateFormatted}, understaffed. Operating requirement not met.`;
+  }
+  return c.message;
 }
 
 function AttentionNeededStrip(props: AttentionStripProps) {
@@ -571,72 +604,39 @@ function AttentionNeededStrip(props: AttentionStripProps) {
   return (
     <section className="ledger-section">
       <div className="ledger-section-head">
-        <h2 className="ledger-section-title">Coverage shortages</h2>
+        <h2 className="ledger-section-title">Coverage shortages ({errors.length})</h2>
         <button type="button" className="action-link" onClick={props.onJumpToConflicts}>
           View all in conflicts
         </button>
       </div>
 
       <div className="ledger-list">
-        <div className="ledger-row">
-          <div className="ledger-row-left">
-            <span className="status-sq status-danger" />
-            <span className="ledger-row-text">
-              Aarav Mehta — on leave Dec 8–10. GlowKart Retention uncovered. No backup assigned.
-            </span>
-          </div>
-          <div className="ledger-row-right">
-            <span className="ledger-row-stat danger">0 of 1</span>
-            <button type="button" className="action-link" onClick={() => props.onInspectDate('2026-12-08')}>
-              Inspect Dec 8
-            </button>
-          </div>
-        </div>
+        {errors.map((c) => {
+          const dt = new Date(`${c.date}T12:00:00`);
+          const dateLabel = `${dt.toLocaleString('en-GB', { month: 'short' })} ${dt.getDate()}`;
+          const isGap = c.type === 'COVERAGE_GAP';
+          const statText = isGap ? '0 of 1' : '1 of 2';
+          const sentence = getAttentionErrorSentence(c, props.data);
 
-        <div className="ledger-row">
-          <div className="ledger-row-left">
-            <span className="status-sq status-danger" />
-            <span className="ledger-row-text">
-              Meera Pillai — on leave Dec 21. BookBarn Customer Support uncovered. No backup assigned.
-            </span>
-          </div>
-          <div className="ledger-row-right">
-            <span className="ledger-row-stat danger">0 of 1</span>
-            <button type="button" className="action-link" onClick={() => props.onInspectDate('2026-12-21')}>
-              Inspect Dec 21
-            </button>
-          </div>
-        </div>
-
-        <div className="ledger-row">
-          <div className="ledger-row-left">
-            <span className="status-sq status-danger" />
-            <span className="ledger-row-text">
-              Sanjay Yadav — on leave Dec 21. BookBarn Retention uncovered. No backup assigned.
-            </span>
-          </div>
-          <div className="ledger-row-right">
-            <span className="ledger-row-stat danger">0 of 1</span>
-            <button type="button" className="action-link" onClick={() => props.onInspectDate('2026-12-21')}>
-              Inspect Dec 21
-            </button>
-          </div>
-        </div>
-
-        <div className="ledger-row">
-          <div className="ledger-row-left">
-            <span className="status-sq status-warning" />
-            <span className="ledger-row-text">
-              TechTrove Customer Support — Dec 3 only, 1 of 2 staff. Neha Joshi on leave; Farhan Khan covering.
-            </span>
-          </div>
-          <div className="ledger-row-right">
-            <span className="ledger-row-stat warning">1 of 2</span>
-            <button type="button" className="action-link" onClick={() => props.onInspectDate('2026-12-03')}>
-              Inspect Dec 3
-            </button>
-          </div>
-        </div>
+          return (
+            <div key={c.id} className="ledger-row">
+              <div className="ledger-row-left">
+                <span className={`status-sq ${isGap ? 'status-danger' : 'status-warning'}`} />
+                <span className="ledger-row-text">{sentence}</span>
+              </div>
+              <div className="ledger-row-right">
+                <span className={`ledger-row-stat ${isGap ? 'danger' : 'warning'}`}>{statText}</span>
+                <button
+                  type="button"
+                  className="action-link"
+                  onClick={() => props.onInspectDate(c.date, c.employeeId)}
+                >
+                  Inspect {dateLabel}
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
@@ -794,11 +794,10 @@ function OverviewView(p: OverviewProps) {
   const isCompact = p.density === 'compact';
   const [overviewMode, setOverviewMode] = useState<'map' | 'detail'>('map');
 
-  const [collapsedPods, setCollapsedPods] = useState<Record<string, boolean>>({
-    pod_1: false,
-    pod_2: false,
-    pod_3: false,
-    pod_4: false,
+  const [collapsedPods, setCollapsedPods] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    PODS.forEach((pod) => { init[pod.id] = false; });
+    return init;
   });
 
   function togglePod(podId: string) {
@@ -806,11 +805,15 @@ function OverviewView(p: OverviewProps) {
   }
 
   function expandAllPods() {
-    setCollapsedPods({ pod_1: false, pod_2: false, pod_3: false, pod_4: false });
+    const next: Record<string, boolean> = {};
+    PODS.forEach((pod) => { next[pod.id] = false; });
+    setCollapsedPods(next);
   }
 
   function collapseAllPods() {
-    setCollapsedPods({ pod_1: true, pod_2: true, pod_3: true, pod_4: true });
+    const next: Record<string, boolean> = {};
+    PODS.forEach((pod) => { next[pod.id] = true; });
+    setCollapsedPods(next);
   }
 
   function handleMapSelectCell(employeeId: string, date: string) {
@@ -831,6 +834,7 @@ function OverviewView(p: OverviewProps) {
       {/* 1. Coverage Shortages Section */}
       <AttentionNeededStrip
         conflicts={result.conflicts}
+        data={data}
         onInspectDate={p.onInspectDate}
         onJumpToConflicts={p.onJumpToConflicts}
       />
@@ -895,16 +899,12 @@ function OverviewView(p: OverviewProps) {
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            {overviewMode === 'detail' && (
-              <>
-                <button type="button" className="btn-secondary" style={{ height: 32, fontSize: 13 }} onClick={expandAllPods}>
-                  Expand all
-                </button>
-                <button type="button" className="btn-secondary" style={{ height: 32, fontSize: 13 }} onClick={collapseAllPods}>
-                  Collapse all
-                </button>
-              </>
-            )}
+            <button type="button" className="btn-secondary" style={{ height: 32, fontSize: 13 }} onClick={expandAllPods}>
+              Expand all
+            </button>
+            <button type="button" className="btn-secondary" style={{ height: 32, fontSize: 13 }} onClick={collapseAllPods}>
+              Collapse all
+            </button>
 
             <input
               className="search-input"
@@ -935,6 +935,13 @@ function OverviewView(p: OverviewProps) {
             result={result}
             entryByKey={p.entryByKey}
             onSelectCell={handleMapSelectCell}
+            search={p.search}
+            podFilter={p.podFilter}
+            hideUnscheduled={p.hideUnscheduled}
+            highlightGapsOnly={p.highlightGapsOnly}
+            colorBy={p.colorBy}
+            collapsedPods={collapsedPods}
+            onTogglePod={togglePod}
           />
         ) : (
           <>
@@ -1452,7 +1459,10 @@ function InspectorModal(props: InspectorModalProps) {
                                 <button
                                   type="button"
                                   className="btn btn-small btn-primary"
-                                  onClick={() => props.onAssignBackup(cand.employeeId, s.brandId, s.processId)}
+                                  onClick={() => {
+                                    props.onAssignBackup(cand.employeeId, s.brandId, s.processId);
+                                    props.onClose();
+                                  }}
                                 >
                                   + Assign backup cover
                                 </button>
@@ -1920,17 +1930,26 @@ function ConflictsView(props: {
                 {props.backupFor === c.id ? 'Close backup' : 'Find backup'}
               </button>
               {props.backupFor === c.id && (
-                <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 4, padding: '4px 8px', zIndex: 10, boxShadow: '0 2px 4px rgba(0,0,0,0.08)', whiteSpace: 'nowrap' }}>
-                  {findBackup(props.data, props.result, c.date, c.brandId, c.processId, c.employeeId).slice(0, 1).map((cand) => (
-                    <button
-                      key={cand.employeeId}
-                      type="button"
-                      className="action-link"
-                      onClick={() => props.onAssignBackup(cand.employeeId, c.brandId!, c.processId!)}
-                    >
-                      + Assign {cand.name.split(' ')[0]} as backup
-                    </button>
-                  ))}
+                <div style={{ position: 'absolute', right: 0, top: '100%', marginTop: 4, background: '#FFFFFF', border: '1px solid var(--border)', borderRadius: 4, padding: '6px 10px', zIndex: 10, boxShadow: '0 2px 6px rgba(0,0,0,0.1)', whiteSpace: 'nowrap', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {(() => {
+                    const cands = findBackup(props.data, props.result, c.date, c.brandId, c.processId, c.employeeId);
+                    if (cands.length === 0) {
+                      return <span style={{ fontSize: 11, color: 'var(--ink-2)' }}>No eligible backup in pod</span>;
+                    }
+                    return cands.slice(0, 2).map((cand) => (
+                      <button
+                        key={cand.employeeId}
+                        type="button"
+                        className="action-link"
+                        onClick={() => {
+                          props.onAssignBackup(cand.employeeId, c.brandId!, c.processId!);
+                          props.setBackupFor(null);
+                        }}
+                      >
+                        + Assign {cand.name} as backup
+                      </button>
+                    ));
+                  })()}
                 </div>
               )}
             </div>

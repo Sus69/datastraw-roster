@@ -5,24 +5,28 @@
 **LinkedIn:** https://www.linkedin.com/in/mr-maple
 **Demo video (3–5 min):** link to be added here once recorded — it will show roster generation, different brand schedules, conflict detection, and handling a change.
 
-A browser-based roster management tool for an operations company that runs
-support and operational processes for multiple D2C brands. It plans, generates,
-validates and manages monthly rosters across brands, processes and pods, and
-flags coverage conflicts instead of silently producing an invalid roster.
+I built this for Datastraw's hiring assignment: a browser app that plans,
+generates, validates and manages monthly rosters for an operations company
+running support and operational processes for multiple D2C brands. The point
+of it is the scheduling problem underneath, not the calendar on top — if a
+roster can't cover a brand, the app says so instead of quietly printing a
+broken one.
 
-**December 2026 (default month, verified on the live app): 36 staff, 12 brands,
-875 of 875 shifts covered, 0 coverage gaps, 0 understaffed days, 15 weekly-off
-overrides.** The overrides are warnings, not errors — required client coverage
-takes precedence over a preferred weekly off, and each override is flagged.
+**December 2026 (the default month, checked on the live app): 36 staff,
+12 brands, 875 of 875 shifts covered, 0 coverage gaps, 0 understaffed days,
+15 weekly-off overrides.** Those overrides are warnings, not errors. When a
+client needs coverage on someone's preferred weekly off, coverage wins — but
+the app flags the shift so a manager can see the cost.
 
-Built with React 19 + TypeScript + Vite. The browser app has no external
-backend or network dependency: all seed data ships locally and edits persist in
-the browser (localStorage). An optional Python/CP-SAT HTTP bridge can be started
-on localhost for solver comparison and server-side validation; it is not
-required to run the app. **Note:** the deployed Vercel build is a static site
-with no `api/` backend, so the live app runs the deterministic greedy engine in
-`src/lib/engine.ts` plus its independent validation pass; the CP-SAT bridge is
-local-only (see "Constraint Programming (CP-SAT) Engine" below).
+It's React 19 + TypeScript + Vite. The app has no backend and needs no
+network: the seed data ships with it and edits save in the browser
+(localStorage). There is an optional Python/CP-SAT bridge you can run on
+localhost for solver comparison and server-side validation, but the app works
+without it. One thing to be straight about: the deployed Vercel build is a
+static site with no `api/` backend, so the live app runs the deterministic
+greedy engine in `src/lib/engine.ts` plus its own independent validation pass.
+The CP-SAT bridge is local-only (more in "Constraint Programming (CP-SAT)
+Engine" below).
 
 ## Setup
 
@@ -33,68 +37,71 @@ npm run build    # type-check + production build
 npm run preview  # serve the production build locally
 ```
 
-No environment variables are required to run the app — `.env.example`
-documents that (all data is local seed data in `src/data/seed.ts`; there is no
-backend). The CP-SAT bridge is the only optional local service
+No environment variables are needed to run the app. `.env.example` says so
+plainly — all the data is local seed data in `src/data/seed.ts` and there is
+no backend. The only optional local service is the CP-SAT bridge
 (`npm run engine:server`, port 8000; see Commands below).
 
 ## What it does
 
-- **Data model:** 36 employees, 12 fictional D2C brands, 4 processes
+- **Data model:** 36 employees, 12 made-up D2C brands, 4 processes
   (Customer Support, Abandoned Cart Conversions, Retention, Non-Delivery
-  Report), 4 operational pods each with a pod lead, and resource allocations
-  (employee → brand + process, primary or secondary) — 72 allocations in
-  total: 30 primary, 42 secondary/backup. **9 of 12 brands (75%) have one
-  dedicated primary employee handling all of that brand's processes**
+  Report), 4 operational pods, each with a pod lead. Allocations link an
+  employee to a brand + process as `primary` or `secondary` — 72 in total,
+  30 primary and 42 secondary/backup. **9 of the 12 brands (75%) have a
+  single dedicated primary employee doing all of that brand's processes**
   (GlowKart, FitFuel, UrbanNest, TechTrove, PetPals, StyleSutra, SnackBox,
-  BabyBliss, GreenLeaf), matching the brief's ~80% single-resource pattern;
-  AutoAce and BookBarn have 2 primary employees each and WellnessWave has 3.
-  The remaining employees are shared across brands or act as pod floaters
-  (backup cover). Two additional recovery specialists (e35 Isha Rao, e36
-  Naveen Kumar) strengthen GlowKart, BookBarn and TechTrove cover;
-  e36's TechTrove cover is backed by an explicit cross-pod authorization.
-- **Working rules per brand/process:** 365-day ops, daily except public
-  holidays, or Sundays + public holidays off. Different processes in the same
-  brand can have different rules. Minimum staffing is configurable per
-  brand/process.
-- **Roster generation:** pick a month (default December 2026). The engine
-  respects operating calendars, availability, weekly offs, planned leaves,
-  comp-offs and minimum staffing. Most-constrained slots are filled first.
-- **Conflict detection & validation:** coverage gaps, understaffing, weekly-off
-  overrides, double-booking and leave clashes — each with an explanation and a
-  suggested fix. Mandatory constraints (coverage, leaves) are errors; weekly-off
-  overrides are warnings.
-- **Views:** company-wide monthly grid, pod-wise, brand-wise (coverage per day),
-  process-wise, employee-wise (working days, offs, holidays, leaves).
-- **Editing:** change weekly offs, add/remove leaves, change a brand/process
-  operating rule or minimum staffing — the whole month re-generates and
-  re-validates immediately. Edits persist in localStorage; "Reset to seed data"
-  restores the original dataset.
-- **Simulate a change:** mark any employee unavailable on any day, preview the
-  new conflicts it creates and the suggested backup, then apply or discard.
-- **Roster recovery:** "Find backup" is now a constraint-aware recovery engine.
-  It discovers unassigned same-brand and same-pod employees plus safely
-  reassignable employees on other brands, simulates the whole day's coverage,
-  rejects moves that would create another gap, independently validates the
-  resulting directive, ranks valid repairs lexicographically, and keeps every
-  repair date-specific so permanent allocations and unrelated roster entries
-  are never silently changed.
-- **Extras:** CSV export of the roster, search/filter, backup suggestions on
-  every conflict.
-- **Recovery Lab:** a dedicated visualizer built on the same recovery engine.
-  Mark an employee unavailable or pick an existing shortage, then run the real
-  candidate evaluation, simulation, lexicographical ranking and independent
-  validation. The Lab shows the assignment board before/after, a ten-stage
-  execution pipeline, actual rejection reasons, coverage impact and animated assignment
-  movement without mutating permanent allocations. Applying a repair is a
-  separate, explicit confirmation: the Lab revalidates the directive first and
-  then commits the date-specific instruction (and, for an absence scenario, the
-  scenario leave) through the normal override path.
+  BabyBliss, GreenLeaf), which is close to the brief's ~80% single-resource
+  pattern. AutoAce and BookBarn have 2 primary employees each, WellnessWave
+  has 3. Everyone else is shared across brands or works as a pod floater
+  (backup cover). Two extra recovery specialists (e35 Isha Rao, e36 Naveen
+  Kumar) shore up GlowKart, BookBarn and TechTrove; e36's TechTrove cover is
+  backed by an explicit cross-pod authorization.
+- **Working rules, per brand/process:** 365-day ops, daily except public
+  holidays, or Sundays + public holidays off. Two processes in the same brand
+  can run on different rules, and minimum staffing is set per brand/process.
+- **Roster generation:** pick a month (December 2026 by default). The engine
+  works through operating calendars, availability, weekly offs, planned
+  leaves, comp-offs and minimum staffing, filling the most-constrained slots
+  first.
+- **Conflict detection & validation:** coverage gaps, understaffing,
+  weekly-off overrides, double-booking and leave clashes. Each one comes with
+  a plain explanation and a suggested fix. Missing coverage or someone
+  scheduled on leave is an error; a weekly-off override is a warning.
+- **Views:** a company-wide monthly grid, plus pod-wise, brand-wise (coverage
+  per day), process-wise and employee-wise views (working days, offs,
+  holidays, leaves).
+- **Editing:** change weekly offs, add or remove leaves, change a
+  brand/process operating rule or minimum staffing — the whole month
+  re-generates and re-validates straight away. Edits save in localStorage;
+  "Reset to seed data" puts the original dataset back.
+- **Simulate a change:** mark any employee unavailable on any day, see the new
+  conflicts it would create and the suggested backup, then apply it or throw
+  it away.
+- **Roster recovery:** "Find backup" isn't a guess — it's a constraint-aware
+  recovery engine. It looks for unassigned same-brand and same-pod people
+  plus employees on other brands who can safely move, simulates the whole
+  day's coverage, throws out any move that would open another gap,
+  independently validates the repair, ranks the valid ones
+  lexicographically, and keeps every repair tied to one date. Permanent
+  allocations and unrelated roster entries are never silently changed.
+- **Extras:** CSV export of the roster, search/filter, and a backup
+  suggestion on every conflict.
+- **Recovery Lab:** a visualizer built on the same recovery engine. Mark
+  someone unavailable or pick an existing shortage, then run the real
+  candidate check, simulation, ranking and validation. The Lab shows the
+  assignment board before and after, a ten-stage execution pipeline, the
+  actual rejection reasons, coverage impact and animated assignment movement —
+  all without touching permanent allocations. Applying a repair is a separate,
+  explicit step: the Lab revalidates the directive first, then commits the
+  date-specific instruction (and, for an absence scenario, the scenario leave)
+  through the normal override path.
 
-- **Fairness:** the generator keeps a month-to-date workload ledger and
-  prefers the least-loaded eligible person (and fewest weekly-off overrides)
-  when candidates tie, so the same backup people are not pulled into every
-  gap. Recovery ranking also prefers lower current workload (rank key 7).
+- **Fairness:** the generator keeps a running tally of how much each person
+  has already worked this month, and when two candidates tie it picks the
+  least-loaded one (and the one with fewer overridden weekly offs). That way
+  the same backup people don't get pulled into every gap. Recovery ranking
+  does the same thing — lower current workload is rank key 7.
 
 ## How this meets the brief (§3)
 
@@ -109,138 +116,142 @@ backend). The CP-SAT bridge is the only optional local service
 
 ## Assumptions
 
-- All brand and employee names are fictional. The public holidays listed are
-  real India holidays for Nov 2026 – Feb 2027 (Guru Nanak Jayanti, Christmas,
+- Every brand and employee name is made up. The public holidays are real
+  India holidays for Nov 2026 – Feb 2027 (Guru Nanak Jayanti, Christmas,
   New Year's Day, Makar Sankranti, Republic Day, Shivaji Maharaj Jayanti).
-- One employee works at most one brand per day. Under brand semantics, one
-  shift covers every process the employee is allocated to at that brand.
-  An employee allocated to several brands is scheduled to the most-constrained
-  slot first.
-- Weekly offs are **preferences**, not hard blocks: required client coverage
-  beats a preferred weekly off, but the override is flagged as a warning.
-  Planned leaves and comp-offs are **hard** unavailability — the engine never
+- One employee works at most one brand per day. One shift covers every
+  process that employee is allocated to at that brand. Someone allocated to
+  several brands gets scheduled to the most-constrained slot first.
+- Weekly offs are **preferences**, not hard blocks: if a client needs coverage
+  that day, coverage wins, but the override shows up as a warning. Planned
+  leaves and comp-offs are **hard** unavailability — the engine never
   schedules someone on leave.
-- The sample dataset is deliberately seeded so December 2026 shows real
-  behaviour: Aarav Mehta's leave 8–10 Dec is covered by the backup pool
-  (incl. recovery specialist e35 Isha Rao), both BookBarn employees' leave
-  on 21 Dec is covered by e36 Naveen Kumar, and TechTrove on 3 Dec is covered
-  (Farhan Khan working while Neha Joshi is on planned leave).
-  Several weekly-off overrides still appear on single-resource brands so the
-  warning path remains visible.
-- The approach note is the Approach section below (§8 of the brief); the demo
-  video link at the top of this README is added once the video is recorded.
+- I seeded the December 2026 data so it actually shows something: Aarav
+  Mehta is on leave 8–10 Dec and the backup pool covers GlowKart (including
+  recovery specialist e35 Isha Rao); both BookBarn employees are on leave
+  21 Dec and e36 Naveen Kumar covers; TechTrove on 3 Dec is covered too
+  (Farhan Khan working while Neha Joshi is on planned leave). A few
+  weekly-off overrides still show up on single-resource brands, so the
+  warning path stays visible.
+- The approach note is the Approach section below (§8 of the brief). The demo
+  video link at the top of this README goes in once the video is recorded.
 
 ## Approach
 
 ### 1. How did you model employees, brands, processes, pods, and their relationships?
 
-Employees, brands, pods and allocations are separate entities in
-`src/data/seed.ts`. A brand owns a list of processes, each with its own
-operating rule and minimum staffing. An allocation links one employee to one
-brand + one process with a role (`primary` or `secondary`). An employee can
-hold several allocations (multi-brand or backup cover), and a pod groups
-employees under a pod lead. Holidays are a separate list, and availability
-(weekly off, leaves, comp-offs) lives on the employee. The engine
-(`src/lib/engine.ts`) takes this whole structure as input, so any change to
-the data re-generates the roster from scratch — there is no stored roster to
-go stale.
+Employees, brands, pods and allocations are separate things in
+`src/data/seed.ts` — I didn't want them tangled together in one big table.
+A brand owns its list of processes, and each process carries its own
+operating rule and minimum staffing. An allocation is just a link: one
+employee → one brand + one process, marked `primary` or `secondary`. One
+employee can hold several allocations, which is how multi-brand work and
+backup cover are represented. A pod is a group of employees under a pod lead.
+Holidays live in their own list, and availability (weekly off, leaves,
+comp-offs) lives on the employee. The engine (`src/lib/engine.ts`) takes the
+whole structure as input and builds the roster from scratch every time, so
+there's no stored roster sitting around going stale when the data changes.
 
 ### 2. How does your system generate a roster and determine whether it satisfies the required constraints?
 
-For each day, the engine lists the brand/process slots that operate that day
-(under their rule), ranks brands most-constrained first (fewest available
-people relative to demand), and picks a working set per brand: preferring
-people who are not on their weekly off, then primaries over secondaries. One
-employee works for at most one brand per day, but covers every process they
-are allocated to at that brand — a single dedicated employee handling all of
-a brand's processes does them all inside one working day, not as separate
-shifts. After generation, an independent validation pass recomputes coverage
-from the produced roster and checks for gaps, understaffing, double-booking
-and leave clashes, so a bug in generation cannot hide a bad roster. A slot
-counts as covered only when scheduled headcount meets the minimum staffing.
-Primaries work their processes: an available primary for an operating process
-is scheduled unless it is their weekly off and cover already exists;
-secondaries are backup-only, picked to meet minimum staffing or cover absence.
+Day by day, the engine lists the brand/process slots that actually operate
+that day (under their rule), then works through the brands most-constrained
+first — fewest available people relative to demand. For each brand it picks a
+working set, preferring people who aren't on their weekly off, then primaries
+over secondaries. One employee works for at most one brand a day, but they
+cover every process they're allocated to at that brand: a single dedicated
+employee doing all of a brand's processes does them inside one working day,
+not as separate shifts.
+
+Then a separate validation pass checks the result. It recomputes coverage from
+the roster the engine produced and looks for gaps, understaffing,
+double-booking and leave clashes, so a bug in generation can't quietly hide a
+bad roster. A slot only counts as covered when scheduled headcount meets the
+minimum staffing. In practice: an available primary for an operating process
+gets scheduled unless it's their weekly off and cover already exists;
+secondaries are backup-only, pulled in to meet minimum staffing or cover an
+absence.
 
 ### 3. How did you handle the difference between single-resource brands and brands with multiple employees?
 
-Single-resource brands depend on one person, so their coverage is fragile by
-design: the engine gives them secondary/backup allocations from shared
-employees and pod floaters where possible (e.g. GlowKart's Customer Support
-has a backup, its other processes do not). Multi-employee brands cross-cover:
-AutoAce's two primaries split its processes, BookBarn's two employees are each
-secondary on the other's process, and WellnessWave's three split processes with
-cross-cover. The generator treats both the same way — it just has more
-candidates for multi-employee brands — so a single-resource brand naturally
-produces more warnings/gaps, which is the honest signal that it needs backup
-hiring.
+A single-resource brand lives or dies by one person, so its coverage is
+fragile by design. Where I could, I gave those brands secondary/backup
+allocations from shared employees and pod floaters — GlowKart's Customer
+Support has a backup, its other processes don't. Multi-employee brands
+cross-cover: AutoAce's two primaries split its processes, BookBarn's two
+employees are each secondary on the other's process, and WellnessWave's three
+split processes with cross-cover. The generator doesn't treat the two cases
+differently — it just has more candidates to pick from on multi-employee
+brands. So a single-resource brand naturally throws up more warnings and gaps,
+which is the honest signal: it needs backup hiring.
 
 ### 4. What happens when an employee manages all processes for a brand but is unavailable on a required working day?
 
-If the employee is on leave or comp-off, they are hard-unavailable. The
-generator first tries the brand's secondary/backup allocations; if no backup
-can cover it, the slot is left uncovered and the engine records a
-coverage-gap (or understaffing) error for every operating process that day,
-with a suggestion and a ranked "Find backup" recovery list: free
-same-brand/same-pod people, then employees on other brands whose move has
-been simulated against the whole day's coverage.
-Candidates that would create another gap are shown with a rejection reason. If instead
-it is only their preferred weekly off, mandatory coverage wins: they are
-scheduled anyway and the shift is flagged as a weekly-off override warning,
-so the manager sees the cost and can fix it by adding backup cover.
+If they're on leave or comp-off, they're hard-unavailable — the engine will
+not schedule them, full stop. The generator tries the brand's
+secondary/backup allocations first; if nobody can cover it, the slot stays
+uncovered and the engine logs a coverage-gap (or understaffing) error for
+every operating process that day, along with a suggestion and a ranked
+"Find backup" list: free same-brand/same-pod people first, then employees on
+other brands whose move has been simulated against the whole day's coverage.
+Anyone whose move would open another gap shows up with the reason why.
+If it's only their preferred weekly off, it's the other way round: mandatory
+coverage wins, they get scheduled anyway, and the shift is flagged as a
+weekly-off override warning so the manager sees the cost and can fix it by
+adding backup cover.
 
 ### 5. How does your system handle conflicting requirements or insufficient staffing?
 
-It never resolves a conflict silently. Conflicts are classified: errors for
-mandatory failures (no cover, understaffed, double-booked, scheduled on
-leave) and warnings for preference overrides. Every conflict carries a plain
-explanation and a suggested action, and the conflict list can suggest a
-backup employee (same brand/process first, then same pod/same process). The
-"Simulate a change" panel shows the exact new conflicts a proposed change
-would create before the manager commits to it.
+It never papers over a conflict. Conflicts are split into two kinds: errors
+for mandatory failures (no cover, understaffed, double-booked, scheduled on
+leave) and warnings for preference overrides. Every conflict gets a plain
+explanation and a suggested action, and the conflict list can suggest a backup
+(same brand/process first, then same pod/same process). The "Simulate a
+change" panel shows the exact new conflicts a proposed change would create
+before the manager commits to it.
 
 ### 6. Which parts of the process did you automate, and which did you leave under human control? Why?
 
 Automated: roster generation, constraint checking, conflict flagging, backup
-suggestions and CSV export — these are mechanical and error-prone by hand.
-Human-controlled: approving a roster, resolving a flagged gap (add cover,
-move a leave, accept the gap), changing operating rules and minimum staffing,
-and applying a simulated change. A gap is a business decision (e.g. accepting
-uncovered Retention for a day vs paying overtime), so the system surfaces it
-instead of deciding it.
+suggestions and CSV export. Those are mechanical and easy to get wrong by
+hand, so a computer should do them. Human-controlled: approving a roster,
+resolving a flagged gap (add cover, move a leave, accept the gap), changing
+operating rules and minimum staffing, and applying a simulated change. A gap
+is a business decision — accepting uncovered Retention for a day versus paying
+overtime, for example — so the system surfaces it instead of deciding it.
 
 ### 7. If the company doubled its team and brand count, what would you change about your solution?
 
-The engine is already O(days × slots × candidates) with no per-employee
-quadratic work, so generation would still be fast; the changes would be
-around data, not the algorithm. I would move the seed data into a real
-database (Supabase/PostgreSQL, which Datastraw already uses) with an API and
-an admin UI so an operations manager can add brands, processes and employees
-without editing code, add pagination/virtualisation to the grid (a
-60-employee × 31-day table is still fine, but 200+ needs it), add
-role-based access (pod leads edit only their pod), and add an approval
-workflow so a generated roster is a draft until a manager publishes it.
-Fairness is already handled by a workload ledger in the generator and a
-workload key in recovery ranking (see Q8), so at double scale I would keep
-that mechanism and extend the existing automated Python and TypeScript
-recovery tests into a property-based scheduling suite rather than inventing a
-new optimiser first.
+The engine itself would hold up — it's O(days × slots × candidates) with no
+per-employee quadratic work, so generating would still be fast. What would
+have to change is everything around the data. I'd move the seed data into a
+real database (Supabase/PostgreSQL, which Datastraw already uses) with an API
+and an admin screen, so an operations manager can add brands, processes and
+employees without touching code. I'd add pagination/virtualisation to the grid
+(a 60-person × 31-day table is still fine, but 200+ isn't), role-based access
+(pod leads edit only their own pod), and an approval workflow so a generated
+roster stays a draft until a manager publishes it. Fairness is already handled
+by the workload tally in the generator and a workload key in recovery ranking
+(see Q8), so at double the size I'd keep that and put the effort into growing
+the existing automated Python and TypeScript recovery tests into a
+property-based scheduling suite, rather than building a new optimiser first.
 
 ### 8. If you had one additional week to work on this, what would you improve first?
 
-Fairness and recovery were the first improvement, and they are now built:
-the generator keeps a month-to-date fairness ledger (least-loaded eligible
-person wins ties; overridden weekly offs are spread, not stacked on the same
-people), recovery ranks repairs lexicographically with current workload as a
-key, and the Recovery Lab visualises the whole repair. With one more week I
-would build the roster approval workflow first (draft → pod-lead review →
-published, per §6 of the brief), because right now a generated roster has no
-publish state — anyone viewing the app sees the working draft. Second, an
-admin UI to add brands, processes and employees without editing `seed.ts`
-(the one §3A capability that still needs a code change). Third, automatic
-roster-regeneration suggestions: when a leave is approved after publishing,
-propose the smallest set of reassignments that restores coverage instead of
-just flagging the gap. After that, Excel export of the coverage view.
+Fairness and recovery were the first improvement, and they're done now: the
+generator keeps a running tally of who has worked how much (least-loaded
+eligible person wins ties, overridden weekly offs get spread around instead
+of stacking on the same people), recovery ranks repairs with current workload
+as a key, and the Recovery Lab shows the whole repair happening. With one
+more week I'd build the roster approval workflow first — draft → pod-lead
+review → published, per §6 of the brief — because right now a generated roster
+has no publish state, so anyone opening the app just sees the working draft.
+Second, an admin screen to add brands, processes and employees without
+editing `seed.ts` (the one §3A thing that still needs a code change). Third,
+automatic regeneration suggestions: when a leave gets approved after
+publishing, propose the smallest set of reassignments that fixes coverage
+instead of just flagging the gap. After that, Excel export of the coverage
+view.
 
 ## Project structure
 

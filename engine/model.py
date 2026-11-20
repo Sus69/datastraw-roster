@@ -46,6 +46,7 @@ class SchedulingEngine:
 
     def __init__(self, input_data: SchedulingInput):
         self.input_data = input_data
+        self.assignment_semantics = getattr(input_data, "assignment_semantics", "process")
         self.holiday_dates: Set[str] = {h.date for h in input_data.holidays}
         self.dates: List[str] = input_data.dates
         self.emp_map: Dict[str, Employee] = {e.id: e for e in input_data.employees}
@@ -207,13 +208,37 @@ class SchedulingEngine:
                     for b_id, p_id, _, _, _ in self.procs
                     if (e.id, b_id, p_id, d) in x
                 ]
-                if emp_x_vars:
-                    # Enforce sum_q x_eqd <= 1
-                    model.Add(sum(emp_x_vars) <= 1)
-                    # Working status consistency: w_ed == sum_q x_eqd
-                    model.Add(w[(e.id, d)] == sum(emp_x_vars))
+                if self.assignment_semantics == "brand":
+                    # Business rule used by the web UI: one brand per employee per
+                    # day, but every authorized operating process at that brand is
+                    # covered by the same working day. Keep a representative y per
+                    # (employee, brand, date) and equate all process variables.
+                    by_brand: Dict[str, List[cp_model.IntVar]] = {}
+                    for b_id, p_id, _, _, _ in self.procs:
+                        var = x.get((e.id, b_id, p_id, d))
+                        if var is not None:
+                            by_brand.setdefault(b_id, []).append(var)
+
+                    brand_vars: List[cp_model.IntVar] = []
+                    for b_id in sorted(by_brand):
+                        group = by_brand[b_id]
+                        y_var = model.NewBoolVar(f"y_{e.id}_{b_id}_{d}")
+                        for var in group:
+                            model.Add(var == y_var)
+                        brand_vars.append(y_var)
+                    if brand_vars:
+                        model.Add(sum(brand_vars) <= 1)
+                        model.Add(w[(e.id, d)] == sum(brand_vars))
+                    else:
+                        model.Add(w[(e.id, d)] == 0)
                 else:
-                    model.Add(w[(e.id, d)] == 0)
+                    if emp_x_vars:
+                        # Enforce sum_q x_eqd <= 1
+                        model.Add(sum(emp_x_vars) <= 1)
+                        # Working status consistency: w_ed == sum_q x_eqd
+                        model.Add(w[(e.id, d)] == sum(emp_x_vars))
+                    else:
+                        model.Add(w[(e.id, d)] == 0)
 
         # Hard Constraint: Minimum Process Coverage
         # sum_e x_{eqd} >= M_{qd} for every operational process and applicable date
@@ -448,22 +473,41 @@ class SchedulingEngine:
         employee_days: Dict[str, Dict[str, str]] = {}
 
         # 1. Extract Roster Entries
-        for (e_id, b_id, p_id, d), var in x.items():
-            if solver.Value(var) == 1:
+        if self.assignment_semantics == "brand":
+            # Combine all processes covered at the same brand into one working day.
+            grouped: Dict[Tuple[str, str, str], List[str]] = {}
+            for (e_id, b_id, p_id, d), var in x.items():
+                if solver.Value(var) == 1:
+                    grouped.setdefault((e_id, b_id, d), []).append(p_id)
+            for (e_id, b_id, d), procs in sorted(grouped.items()):
                 emp = self.emp_map[e_id]
-                is_pref_off = get_weekday(d) in emp.weekly_off
-                is_backup = (self.alloc_map.get((e_id, b_id, p_id)) == "backup")
-
                 entries.append(
                     RosterEntry(
                         date=d,
                         employee_id=e_id,
                         brand_id=b_id,
-                        processes=[p_id],
-                        is_weekly_off=is_pref_off,
-                        is_backup=is_backup,
+                        processes=sorted(procs),
+                        is_weekly_off=get_weekday(d) in emp.weekly_off,
+                        is_backup=any(self.alloc_map.get((e_id, b_id, p)) == "backup" for p in procs),
                     )
                 )
+        else:
+            for (e_id, b_id, p_id, d), var in x.items():
+                if solver.Value(var) == 1:
+                    emp = self.emp_map[e_id]
+                    is_pref_off = get_weekday(d) in emp.weekly_off
+                    is_backup = (self.alloc_map.get((e_id, b_id, p_id)) == "backup")
+
+                    entries.append(
+                        RosterEntry(
+                            date=d,
+                            employee_id=e_id,
+                            brand_id=b_id,
+                            processes=[p_id],
+                            is_weekly_off=is_pref_off,
+                            is_backup=is_backup,
+                        )
+                    )
 
         # 2. Extract Employee Day States
         for e in self.input_data.employees:

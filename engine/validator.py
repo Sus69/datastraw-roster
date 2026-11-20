@@ -143,9 +143,23 @@ class RosterValidator:
                     f"({entry.date}) to cover {entry.brand_id} ({', '.join(entry.processes)})."
                 )
 
-        # 2. Hard Constraint: Exclusive Daily Employee Assignment (sum_q x_eqd <= 1)
+        # 2. Hard Constraint: Exclusive Daily Employee Assignment
+        # Legacy process semantics: at most one brand/process per day.
+        # Brand semantics: at most one brand per day; several processes at that
+        # brand are one working day and are explicitly allowed.
+        brand_semantics = getattr(input_data, "assignment_semantics", "process") == "brand"
         for (emp_id, date), procs in emp_date_procs.items():
-            if len(procs) > 1:
+            if brand_semantics:
+                distinct_brands = {b for b, _ in procs}
+                if len(distinct_brands) > 1:
+                    emp = emp_map.get(emp_id)
+                    emp_name = emp.name if emp else emp_id
+                    proc_desc = ", ".join(f"{b}-{p}" for b, p in procs)
+                    hard_failures.append(
+                        f"Multiple daily assignments: Employee {emp_name} ({emp_id}) assigned to "
+                        f"{len(distinct_brands)} brands on {date} ({proc_desc}). Max allowed is 1 brand."
+                    )
+            elif len(procs) > 1:
                 emp = emp_map.get(emp_id)
                 emp_name = emp.name if emp else emp_id
                 proc_desc = ", ".join(f"{b}-{p}" for b, p in procs)

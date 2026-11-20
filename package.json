@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "python -m pytest tests/test_scheduling.py -v",
+    "test": "python -m pytest tests -q",
     "engine:solve": "python -m engine.cli solve",
     "engine:validate": "python -m engine.cli validate",
     "engine:reoptimize": "python -m engine.cli reoptimize",

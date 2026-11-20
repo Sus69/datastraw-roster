@@ -69,6 +69,28 @@ export interface Holiday {
   name: string;
 }
 
+/**
+ * A date-specific recovery instruction. These are deliberately separate from
+ * permanent `Allocation` records: a temporary backup or reassignment changes
+ * only the named date and never rewrites the permanent allocation model.
+ */
+export type RecoveryAssignmentType = 'temporary-backup' | 'temporary-reassignment';
+
+export interface RecoveryAssignment {
+  /** ISO date the instruction applies to. */
+  date: string;
+  employeeId: string;
+  /** Destination brand + process. */
+  brandId: string;
+  processId: ProcessId;
+  type: RecoveryAssignmentType;
+  /** Original assignment, retained for audit/review (not used to mutate allocations). */
+  fromBrandId?: string;
+  fromProcesses?: ProcessId[];
+  /** Optional stable id used by the UI. */
+  id?: string;
+}
+
 export const PODS: Pod[] = [
   { id: 'pod-alpha', name: 'Pod Alpha', leadId: 'e01' },
   { id: 'pod-beta', name: 'Pod Beta', leadId: 'e10' },

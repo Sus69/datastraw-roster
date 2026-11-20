@@ -31,3 +31,7 @@ __pycache__/
 screenshots/
 
 
+
+# Local compile-check output
+.tmp-*/
+.tmp-*.log

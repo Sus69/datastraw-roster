@@ -424,6 +424,12 @@ class SchedulingInput:
     incompatible_pairs: List[IncompatiblePair] = field(default_factory=list)
     workload_policy: WorkloadPolicy = field(default_factory=WorkloadPolicy)
     reference_roster: List[ReferenceAssignment] = field(default_factory=list)
+    # Reconciliation note: the TypeScript browser engine and the original Python
+    # CP-SAT model use different assignment granularity. "process" keeps the
+    # legacy exact model (one brand/process per employee per day); "brand" uses
+    # the application's business rule (one brand per employee per day, covering
+    # every allocated process at that brand).
+    assignment_semantics: str = "process"
     min_weekly_off_default: int = 1
     max_weekly_off_default: int = 2
     timeout_seconds: float = 10.0
@@ -446,6 +452,7 @@ class SchedulingInput:
                 ReferenceAssignment.from_dict(ra)
                 for ra in data.get("reference_roster", data.get("referenceRoster", []))
             ],
+            assignment_semantics=str(data.get("assignment_semantics", data.get("assignmentSemantics", "process"))).lower(),
             min_weekly_off_default=int(data.get("min_weekly_off_default", 1)),
             max_weekly_off_default=int(data.get("max_weekly_off_default", 2)),
             timeout_seconds=float(data.get("timeout_seconds", 10.0)),
@@ -462,6 +469,7 @@ class SchedulingInput:
             "incompatible_pairs": [ip.to_dict() for ip in self.incompatible_pairs],
             "workload_policy": self.workload_policy.to_dict(),
             "reference_roster": [ra.to_dict() for ra in self.reference_roster],
+            "assignment_semantics": self.assignment_semantics,
             "min_weekly_off_default": self.min_weekly_off_default,
             "max_weekly_off_default": self.max_weekly_off_default,
             "timeout_seconds": self.timeout_seconds,

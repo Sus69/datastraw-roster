@@ -10,6 +10,7 @@ import sys
 
 from .domain import RosterEntry, SchedulingInput, SolverStatus
 from .model import SchedulingEngine
+from .recovery import RosterRecoveryEngine
 from .reoptimizer import Reoptimizer
 from .validator import RosterValidator
 
@@ -36,6 +37,16 @@ def main():
     reopt_parser.add_argument("--emp", help="Employee ID becoming unavailable")
     reopt_parser.add_argument("--date", help="Date of unavailability (YYYY-MM-DD)")
     reopt_parser.add_argument("--output", "-o", help="Path to save re-optimized result JSON")
+
+    # Recovery command
+    recover_parser = subparsers.add_parser("recover", help="Find safe, ranked repairs for an uncovered slot")
+    recover_parser.add_argument("--input", "-i", required=True, help="Path to input JSON specification")
+    recover_parser.add_argument("--roster", "-r", required=True, help="Path to current roster entries JSON")
+    recover_parser.add_argument("--date", required=True, help="Date of the uncovered slot (YYYY-MM-DD)")
+    recover_parser.add_argument("--brand", required=True, help="Brand id of the uncovered slot")
+    recover_parser.add_argument("--process", required=True, help="Process id of the uncovered slot")
+    recover_parser.add_argument("--exclude", help="Employee id to exclude from candidates")
+    recover_parser.add_argument("--output", "-o", help="Path to save recovery analysis JSON")
 
     args = parser.parse_args()
 
@@ -82,6 +93,35 @@ def main():
             for v in violations:
                 print(f"  - {v}")
             sys.exit(1)
+
+    elif args.command == "recover":
+        with open(args.input, "r", encoding="utf-8") as f:
+            spec_data = json.load(f)
+        with open(args.roster, "r", encoding="utf-8") as f:
+            roster_data = json.load(f)
+
+        sched_input = SchedulingInput.from_dict(spec_data)
+        if isinstance(roster_data, dict) and "entries" in roster_data:
+            entries = [RosterEntry(**e) for e in roster_data["entries"]]
+        else:
+            entries = [RosterEntry(**e) for e in roster_data]
+
+        analysis = RosterRecoveryEngine.analyze(
+            sched_input,
+            entries,
+            date=args.date,
+            brand_id=args.brand,
+            process_id=args.process,
+            exclude_employee_id=args.exclude,
+        )
+        output_dict = analysis.to_dict()
+        if args.output:
+            with open(args.output, "w", encoding="utf-8") as f:
+                json.dump(output_dict, f, indent=2)
+            print(f"Recovery analysis saved to {args.output}")
+        else:
+            print(json.dumps(output_dict, indent=2))
+        sys.exit(0 if analysis.proposals else 1)
 
     elif args.command == "reoptimize":
         with open(args.input, "r", encoding="utf-8") as f:

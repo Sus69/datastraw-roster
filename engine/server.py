@@ -25,6 +25,7 @@ if parent_dir not in sys.path:
 
 from engine.domain import RosterEntry, SchedulingInput, SolverStatus
 from engine.model import SchedulingEngine
+from engine.recovery import RosterRecoveryEngine
 from engine.reoptimizer import Reoptimizer
 from engine.validator import RosterValidator
 
@@ -114,16 +115,31 @@ class SchedulingRequestHandler(BaseHTTPRequestHandler):
                 status_code = 200 if result.status in (SolverStatus.OPTIMAL, SolverStatus.FEASIBLE) else 422
                 self._write_json(status_code, out)
 
+            elif self.path == "/api/recover":
+                data = self._read_json()
+                sched_input = SchedulingInput.from_dict(data.get("input", {}))
+                entries = [RosterEntry(**e) for e in data.get("entries", [])]
+                analysis = RosterRecoveryEngine.analyze(
+                    sched_input,
+                    entries,
+                    date=data["date"],
+                    brand_id=data["brand_id"],
+                    process_id=data["process_id"],
+                    exclude_employee_id=data.get("exclude_employee_id"),
+                )
+                self._write_json(200, analysis.to_dict())
+
             elif self.path == "/api/validate":
                 data = self._read_json()
                 spec_data = data.get("input", {})
                 entries_data = data.get("entries", [])
                 sched_input = SchedulingInput.from_dict(spec_data)
                 entries = [RosterEntry(**e) for e in entries_data]
-                is_valid, violations = RosterValidator.validate(sched_input, entries)
+                report = RosterValidator.validate(sched_input, entries)
                 self._write_json(200, {
-                    "is_valid": is_valid,
-                    "violations": violations,
+                    "is_valid": report.is_valid,
+                    "violations": report.hard_failures,
+                    "warnings": report.warnings,
                 })
             else:
                 self._write_json(404, {"error": f"Unknown endpoint {self.path}"})

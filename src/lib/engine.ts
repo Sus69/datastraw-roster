@@ -39,13 +39,21 @@ import {
   type Holiday,
   type OperatingRule,
   type ProcessId,
+  type RecoveryAssignment,
 } from '../data/seed';
+import { findSafeBackups } from './recovery';
 
 export interface RosterData {
   employees: Employee[];
   brands: Brand[];
   allocations: Allocation[];
   holidays: Holiday[];
+  /**
+   * Date-specific recovery instructions created by the Roster Recovery Engine.
+   * They never mutate the permanent allocations above; the generator applies
+   * them only for the named date.
+   */
+  recoveryAssignments?: RecoveryAssignment[];
 }
 
 export interface RosterEntry {
@@ -152,6 +160,24 @@ function allocatedTo(data: RosterData, employeeId: string, brandId: string, proc
   );
 }
 
+/** Processes covered by a date-specific recovery instruction. */
+export function recoveryProcesses(
+  data: RosterData,
+  employeeId: string,
+  brand: Brand,
+  targetProcess: ProcessId,
+  type: RecoveryAssignment['type'],
+  date: string,
+): ProcessId[] {
+  if (type === 'temporary-backup') return [targetProcess];
+  const processes = brand.processes
+    .filter((bp) => isOperatingDay(bp.rule, date, data.holidays))
+    .filter((bp) => allocatedTo(data, employeeId, brand.id, bp.processId))
+    .map((bp) => bp.processId);
+  if (!processes.includes(targetProcess)) processes.push(targetProcess);
+  return processes;
+}
+
 // ---------------------------------------------------------------------------
 // Generation — brand by brand, most-constrained brand first.
 // ---------------------------------------------------------------------------
@@ -175,6 +201,49 @@ export function generateRoster(data: RosterData, year: number, month: number): R
     // One brand per employee per day.
     const assignedToday = new Map<string, string>(); // employeeId -> brandId
     const dayEntries: RosterEntry[] = [];
+
+    // Apply date-specific recovery instructions before normal generation.
+    // A reassignment pins the employee to the destination brand for this date
+    // (so the generator cannot also send them to their permanent brand), while
+    // a temporary backup adds one process without changing allocations.
+    const directives = (data.recoveryAssignments ?? []).filter((r) => r.date === date);
+    for (const directive of directives) {
+      const emp = empById.get(directive.employeeId);
+      const targetBrand = data.brands.find((b) => b.id === directive.brandId);
+      const targetProcess = targetBrand?.processes.find((p) => p.processId === directive.processId);
+      if (!emp || !targetBrand || !targetProcess) continue;
+      if (isHardUnavailable(emp, date)) continue;
+      if (!isOperatingDay(targetProcess.rule, date, data.holidays)) continue;
+
+      const existingBrand = assignedToday.get(emp.id);
+      const isReassignment = directive.type === 'temporary-reassignment';
+      if (existingBrand && existingBrand !== targetBrand.id && !isReassignment) continue;
+
+      // A reassignment replaces any earlier recovery entry for the employee.
+      if (isReassignment) {
+        for (let i = dayEntries.length - 1; i >= 0; i--) {
+          if (dayEntries[i].employeeId === emp.id) dayEntries.splice(i, 1);
+        }
+      }
+
+      const processes = recoveryProcesses(data, emp.id, targetBrand, directive.processId, directive.type, date);
+      const existingEntry = dayEntries.find(
+        (e) => e.employeeId === emp.id && e.brandId === targetBrand.id,
+      );
+      if (existingEntry) {
+        for (const p of processes) if (!existingEntry.processes.includes(p)) existingEntry.processes.push(p);
+        existingEntry.overriddenOff = existingEntry.overriddenOff || isWeeklyOff(emp, date);
+      } else {
+        dayEntries.push({
+          date,
+          employeeId: emp.id,
+          brandId: targetBrand.id,
+          processes,
+          overriddenOff: isWeeklyOff(emp, date),
+        });
+      }
+      assignedToday.set(emp.id, targetBrand.id);
+    }
 
     // Tightest brands first: fewest available people relative to demand, so a
     // shared employee is spent where they are needed most.
@@ -453,46 +522,14 @@ export function findBackup(
   processId: ProcessId,
   excludeEmployeeId?: string,
 ): BackupCandidate[] {
-  const brand = data.brands.find((b) => b.id === brandId);
-  if (!brand) return [];
-  const assignedThatDay = new Set(
-    result.entries.filter((e) => e.date === date).map((e) => e.employeeId),
-  );
-  const empById = new Map(data.employees.map((e) => [e.id, e]));
-  const out: BackupCandidate[] = [];
-
-  const consider = (empId: string, tier: 'same-brand' | 'same-pod', reason: string) => {
-    if (empId === excludeEmployeeId) return;
-    if (assignedThatDay.has(empId)) return;
-    const emp = empById.get(empId);
-    if (!emp) return;
-    if (isHardUnavailable(emp, date)) return;
-    if (out.some((o) => o.employeeId === empId)) return;
-    out.push({ employeeId: empId, name: emp.name, tier, reason });
-  };
-
-  // Tier 1: allocated to the same brand + process.
-  for (const a of data.allocations) {
-    if (a.brandId === brandId && a.processId === processId) {
-      const emp = empById.get(a.employeeId)!;
-      const offNote = isWeeklyOff(emp, date) ? ' (would work their weekly off)' : '';
-      consider(a.employeeId, 'same-brand', `${a.role} cover for this brand/process${offNote}`);
-    }
-  }
-  // Tier 2: same pod, same process, on a different brand — free that day.
-  for (const a of data.allocations) {
-    if (a.processId !== processId || a.brandId === brandId) continue;
-    const emp = empById.get(a.employeeId);
-    if (!emp || emp.podId !== brand.podId) continue;
-    consider(a.employeeId, 'same-pod', `Same pod, covers ${processId} for another brand`);
-  }
-
-  // Prefer people who are not on their weekly off, then same-brand tier.
-  const rank = (c: BackupCandidate) => {
-    const emp = empById.get(c.employeeId)!;
-    return `${isWeeklyOff(emp, date) ? 1 : 0}-${c.tier === 'same-brand' ? 0 : 1}-${c.name}`;
-  };
-  return out.sort((a, b) => rank(a).localeCompare(rank(b)));
+  // Keep the historical API, but route it through the recovery evaluator so it
+  // can no longer recommend a candidate whose move creates another gap.
+  return findSafeBackups(data, result, date, brandId, processId, excludeEmployeeId).map((p) => ({
+    employeeId: p.employeeId,
+    name: p.name,
+    tier: p.recoveryType === 'same-pod-backup' ? 'same-pod' : 'same-brand',
+    reason: p.reasons[0] ?? p.recoveryType,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -541,6 +578,14 @@ export async function generateRosterCPSAT(
   month: number,
   timeoutSeconds: number = 10.0,
 ): Promise<RosterResult> {
+  // Date-specific recovery instructions are applied by the local roster-aware
+  // generator. The CP-SAT bridge models permanent allocations only, so sending
+  // recovery directives to it would silently drop them.
+  if ((data.recoveryAssignments?.length ?? 0) > 0) {
+    const local = generateRoster(data, year, month);
+    local.solverStatus = 'FEASIBLE';
+    return local;
+  }
   const days = daysInMonth(year, month);
   const payload = {
     employees: data.employees.map((e) => ({
@@ -573,6 +618,9 @@ export async function generateRosterCPSAT(
     holidays: data.holidays,
     dates: days,
     timeout_seconds: timeoutSeconds,
+    // The web UI follows the brand-level business rule (one brand per day,
+    // every allocated process at that brand). Keep the bridge explicit about it.
+    assignment_semantics: 'brand',
   };
 
   try {

@@ -45,6 +45,12 @@ npm run preview  # serve the production build locally
   restores the original dataset.
 - **Simulate a change:** mark any employee unavailable on any day, preview the
   new conflicts it creates and the suggested backup, then apply or discard.
+- **Roster recovery:** "Find backup" is now a constraint-aware recovery engine.
+  It discovers unassigned same-brand and same-pod employees plus safely
+  reassignable employees on other brands, simulates the whole day's coverage,
+  rejects moves that would create another gap, ranks valid repairs, and keeps
+  every repair date-specific so permanent allocations are never silently
+  changed.
 - **Extras:** CSV export of the roster, search/filter, backup suggestions on
   every conflict.
 
@@ -115,8 +121,10 @@ the honest signal that it needs backup hiring.
 
 If the employee is on leave or comp-off, they are hard-unavailable and the
 slot is left uncovered: the engine records a coverage-gap (or understaffing)
-error for every operating process that day, with a suggestion and a
-"Find backup" list of allocated employees who are free that day. If instead
+error for every operating process that day, with a suggestion and a ranked
+"Find backup" recovery list: free same-brand/same-pod people, then employees on
+other brands whose move has been simulated against the whole day's coverage.
+Candidates that would create another gap are shown with a rejection reason. If instead
 it is only their preferred weekly off, mandatory coverage wins: they are
 scheduled anyway and the shift is flagged as a weekly-off override warning,
 so the manager sees the cost and can fix it by adding backup cover.
@@ -175,15 +183,19 @@ engine/
   validator.py      Independent hard-constraint verifier
   conflict_analyzer.py Diagnostic slack model and infeasibility root-cause analyzer
   reoptimizer.py    Dynamic re-optimization engine (minimizing assignment churn)
-  cli.py            CLI interface (solve, validate, reoptimize)
+  recovery.py       Constraint-aware roster recovery / safe reassignment engine
+  cli.py            CLI interface (solve, validate, reoptimize, recover)
   server.py         Lightweight HTTP API bridge server
 tests/
   generate_fixture.py Generator and independent validator for datastraw_self_test_fixture.json
-  test_scheduling.py Comprehensive pytest test suite (19 test cases)
+  test_scheduling.py Scheduling / CP-SAT pytest suite
+  test_recovery.py   Recovery, reassignment and seed-scenario tests (33 total)
 src/
   data/seed.ts      Types + seed data (employees, brands, pods, allocations, holidays)
-  lib/engine.ts     Roster generation, validation, backup search, CP-SAT bridge, CSV export
-  App.tsx           UI: sidebar, month picker, 6 views, simulate-change, editing, CP-SAT badge
+  lib/engine.ts     Roster generation, validation, CP-SAT bridge, CSV export
+  lib/recovery.ts   Recovery candidate discovery, simulation, ranking and validation
+  AppShell.tsx      UI: sidebar, month picker, 6 views, recovery review, editing, CP-SAT badge
+  App.tsx           Entry re-export for the application shell
   App.css           Plain CSS, dark sidebar + light content
 ```
 
@@ -215,10 +227,21 @@ The scheduling model is formulated as an exact Constraint Programming problem so
 - Diagnostic Slack Model:
   When hard constraints are infeasible, the engine minimizes diagnostic shortage slack $\min \sum s_{qd}$ to isolate exact dates, processes, and shortages without presenting invalid rosters.
 
+### TypeScript / Python reconciliation
+
+The browser engine uses the business rule **one brand per employee per day,
+covering every allocated process at that brand**. The legacy CP-SAT model was
+process-granular (one brand/process per day). `SchedulingInput.assignment_semantics`
+now makes this explicit: `"process"` preserves the existing CP-SAT test contract,
+while `"brand"` applies the UI business rule. Recovery uses the same candidate,
+coverage-simulation and ranking rules in `src/lib/recovery.ts` and
+`engine/recovery.py`, so the two stacks no longer disagree about what a safe
+reassignment is.
+
 ## Commands
 
 ```bash
-# Run complete test suite (19 tests)
+# Run complete test suite (scheduling + recovery)
 npm test
 
 # Run CP-SAT solver via CLI
@@ -229,6 +252,9 @@ npm run engine:validate -- --input datastraw_self_test_fixture.json --roster ros
 
 # Re-optimize schedule after operational disruption
 npm run engine:reoptimize -- --input datastraw_self_test_fixture.json --roster roster.json --emp E01 --date 2026-11-25
+
+# Find and rank safe repairs for one uncovered process
+python -m engine.cli recover --input src/data/seed_data.json --roster roster.json --date 2026-12-03 --brand b04 --process CS
 
 # Start local CP-SAT API bridge server
 npm run engine:server

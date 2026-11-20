@@ -39,6 +39,7 @@ import {
   type Holiday,
   type OperatingRule,
   type ProcessId,
+  type CrossPodAuthorization,
   type RecoveryAssignment,
 } from '../data/seed';
 import { findSafeBackups } from './recovery';
@@ -54,6 +55,10 @@ export interface RosterData {
    * them only for the named date.
    */
   recoveryAssignments?: RecoveryAssignment[];
+  /** Optional explicit permission for a named employee to cover a named
+   *  brand/process outside their own pod. General process experience is not
+   *  enough to authorize a cross-pod move. */
+  crossPodAuthorizations?: CrossPodAuthorization[];
 }
 
 export interface RosterEntry {

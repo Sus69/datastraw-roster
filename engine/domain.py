@@ -180,6 +180,30 @@ class Allocation:
 
 
 @dataclass
+class CrossPodAuthorization:
+    """Explicit permission for an employee to cover a brand/process outside
+    their own pod. Process experience alone is not an authorization."""
+    employee_id: str
+    brand_id: str
+    process_id: ProcessId
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> CrossPodAuthorization:
+        return cls(
+            employee_id=data.get("employee_id") or data.get("employeeId", ""),
+            brand_id=data.get("brand_id") or data.get("brandId", ""),
+            process_id=data.get("process_id") or data.get("processId", ""),
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "employee_id": self.employee_id,
+            "brand_id": self.brand_id,
+            "process_id": self.process_id,
+        }
+
+
+@dataclass
 class Holiday:
     date: str
     name: str
@@ -424,6 +448,7 @@ class SchedulingInput:
     incompatible_pairs: List[IncompatiblePair] = field(default_factory=list)
     workload_policy: WorkloadPolicy = field(default_factory=WorkloadPolicy)
     reference_roster: List[ReferenceAssignment] = field(default_factory=list)
+    cross_pod_authorizations: List[CrossPodAuthorization] = field(default_factory=list)
     # Reconciliation note: the TypeScript browser engine and the original Python
     # CP-SAT model use different assignment granularity. "process" keeps the
     # legacy exact model (one brand/process per employee per day); "brand" uses
@@ -452,6 +477,10 @@ class SchedulingInput:
                 ReferenceAssignment.from_dict(ra)
                 for ra in data.get("reference_roster", data.get("referenceRoster", []))
             ],
+            cross_pod_authorizations=[
+                CrossPodAuthorization.from_dict(cpa)
+                for cpa in data.get("cross_pod_authorizations", data.get("crossPodAuthorizations", []))
+            ],
             assignment_semantics=str(data.get("assignment_semantics", data.get("assignmentSemantics", "process"))).lower(),
             min_weekly_off_default=int(data.get("min_weekly_off_default", 1)),
             max_weekly_off_default=int(data.get("max_weekly_off_default", 2)),
@@ -469,6 +498,7 @@ class SchedulingInput:
             "incompatible_pairs": [ip.to_dict() for ip in self.incompatible_pairs],
             "workload_policy": self.workload_policy.to_dict(),
             "reference_roster": [ra.to_dict() for ra in self.reference_roster],
+            "cross_pod_authorizations": [cpa.to_dict() for cpa in self.cross_pod_authorizations],
             "assignment_semantics": self.assignment_semantics,
             "min_weekly_off_default": self.min_weekly_off_default,
             "max_weekly_off_default": self.max_weekly_off_default,

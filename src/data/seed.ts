@@ -76,6 +76,12 @@ export interface Holiday {
  */
 export type RecoveryAssignmentType = 'temporary-backup' | 'temporary-reassignment';
 
+export interface CrossPodAuthorization {
+  employeeId: string;
+  brandId: string;
+  processId: ProcessId;
+}
+
 export interface RecoveryAssignment {
   /** ISO date the instruction applies to. */
   date: string;

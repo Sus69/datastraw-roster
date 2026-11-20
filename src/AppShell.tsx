@@ -26,6 +26,7 @@ import {
   validateRecoveryProposal,
 } from './lib/recovery';
 import { MonthMap } from './components/MonthMap';
+import { RecoveryLab } from './components/recovery/RecoveryLab';
 import './App.css';
 
 // ---------------------------------------------------------------------------
@@ -101,10 +102,11 @@ function mergeData(o: Overrides): RosterData {
   };
 }
 
-type View = 'overview' | 'pods' | 'brands' | 'processes' | 'employees' | 'conflicts';
+type View = 'overview' | 'recovery' | 'pods' | 'brands' | 'processes' | 'employees' | 'conflicts';
 
 const VIEWS: { id: View; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'recovery', label: 'Recovery Lab' },
   { id: 'pods', label: 'Pods' },
   { id: 'brands', label: 'Brands' },
   { id: 'processes', label: 'Processes' },
@@ -516,6 +518,8 @@ export default function App() {
             onDiscardSimulation={() => setSimPreview(null)}
           />
         )}
+
+        {view === 'recovery' && <RecoveryLab key={`${result.year}-${result.month}`} data={data} result={result} />}
 
         {view === 'pods' && <PodsView result={result} data={data} />}
 

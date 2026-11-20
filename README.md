@@ -56,6 +56,12 @@ npm run preview  # serve the production build locally
   are never silently changed.
 - **Extras:** CSV export of the roster, search/filter, backup suggestions on
   every conflict.
+- **Recovery Lab:** a dedicated visualizer built on the same recovery engine.
+  Mark an employee unavailable or pick an existing shortage, then run the real
+  candidate evaluation, simulation, lexicographical ranking and independent
+  validation. The Lab shows the assignment board before/after, the execution
+  pipeline, actual rejection reasons, coverage impact and animated assignment
+  movement without mutating permanent allocations.
 
 ## Assumptions
 
@@ -201,6 +207,8 @@ src/
   data/seed.ts      Types + seed data (employees, brands, pods, allocations, holidays)
   lib/engine.ts     Roster generation, validation, CP-SAT bridge, CSV export
   lib/recovery.ts   Recovery candidate discovery, simulation, ranking and validation
+  lib/recoveryLab.ts Recovery Lab scenario/trace integration over the same engine
+  components/recovery/ Recovery Lab roster board, execution timeline and impact views
   AppShell.tsx      UI: sidebar, month picker, 6 views, recovery review, editing, CP-SAT badge
   App.tsx           Entry re-export for the application shell
   App.css           Plain CSS, dark sidebar + light content

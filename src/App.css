@@ -72,8 +72,8 @@
 html, body {
   margin: 0;
   padding: 0;
+  height: 100%;
   max-width: 100%;
-  overflow-x: hidden;
   font-family: var(--font-sans);
   font-size: 13px;
   line-height: 1.45;
@@ -98,7 +98,10 @@ html, body {
 
 .app {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+  width: 100%;
 }
 
 /* --------------------------------------------------------------------------
@@ -106,6 +109,8 @@ html, body {
    -------------------------------------------------------------------------- */
 .sidebar {
   width: 240px;
+  height: 100vh;
+  max-height: 100vh;
   flex-shrink: 0;
   background-color: #111827;
   color: #E5E7EB;
@@ -113,19 +118,37 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  position: sticky;
-  top: 0;
-  height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
   border-right: 1px solid #1F2937;
+  box-sizing: border-box;
+  transition: width 150ms ease, padding 150ms ease, opacity 150ms ease;
+}
+
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border-right: none;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .brand-block {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
   padding-bottom: var(--space-2);
   border-bottom: 1px solid #1F2937;
+}
+
+.brand-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
 }
 
 .brand-mark {
@@ -140,17 +163,42 @@ html, body {
   justify-content: center;
   font-weight: 600;
   font-size: 13px;
+  flex-shrink: 0;
 }
 
 .brand-title {
   font-weight: 600;
   font-size: 14px;
   color: #FFFFFF;
+  line-height: 1.2;
 }
 
 .brand-sub {
   font-size: 12px;
   color: #9CA3AF;
+  line-height: 1.2;
+}
+
+.sidebar-collapse-toggle {
+  background: transparent;
+  border: 1px solid #374151;
+  color: #9CA3AF;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: color 120ms ease, background-color 120ms ease, border-color 120ms ease;
+  flex-shrink: 0;
+}
+
+.sidebar-collapse-toggle:hover {
+  background-color: #1F2937;
+  color: #FFFFFF;
+  border-color: #4B5563;
 }
 
 .month-picker-wrap,
@@ -453,9 +501,48 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
 
 .content {
   flex: 1;
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  overflow-x: auto;
   padding: var(--space-4) var(--space-6);
   min-width: 0;
   background-color: var(--canvas);
+  box-sizing: border-box;
+}
+
+.page-head-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-expand-toggle {
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--ink);
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+  flex-shrink: 0;
+}
+
+.sidebar-expand-toggle:hover {
+  background-color: var(--hover-tint);
+  border-color: var(--ink-2);
+}
+
+.sidebar-expand-toggle svg {
+  display: block;
 }
 
 .page-head {
@@ -865,7 +952,8 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
 
 .month-map-table {
   width: 100%;
-  min-width: 780px;
+  min-width: 820px;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 11px;
@@ -1568,20 +1656,31 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
    -------------------------------------------------------------------------- */
 @media (max-width: 900px) {
   .app {
+    height: auto;
+    min-height: 100vh;
+    max-height: none;
+    overflow: visible;
     flex-direction: column;
     max-width: 100%;
     min-width: 0;
-    overflow-x: hidden;
   }
   .sidebar {
     width: 100%;
     max-width: 100%;
     min-width: 0;
     height: auto;
+    max-height: none;
     position: static;
     padding: var(--space-3);
     box-sizing: border-box;
     overflow-x: hidden;
+    transition: none;
+  }
+  .sidebar.collapsed {
+    display: none;
+    width: 100%;
+    height: 0;
+    padding: 0;
   }
   .side-selects-grid {
     display: grid;
@@ -1601,11 +1700,13 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
     display: none;
   }
   .content {
+    height: auto;
+    max-height: none;
+    overflow: visible;
     padding: var(--space-3);
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    overflow-x: hidden;
   }
 }
 

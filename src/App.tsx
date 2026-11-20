@@ -180,6 +180,7 @@ export default function App() {
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(12);
   const [view, setView] = useState<View>('overview');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [overrides, setOverrides] = useState<Overrides>(loadOverrides);
   const [search, setSearch] = useState('');
   const [podFilter, setPodFilter] = useState('all');
@@ -356,13 +357,24 @@ export default function App() {
 
   return (
     <div className="app">
-      <aside className="sidebar">
+      <aside className={`sidebar ${isSidebarOpen ? '' : 'collapsed'}`} aria-label="Sidebar navigation">
         <div className="brand-block">
           <div className="brand-mark">DS</div>
-          <div>
+          <div className="brand-info">
             <div className="brand-title">Datastraw</div>
             <div className="brand-sub">Roster operations</div>
           </div>
+          <button
+            type="button"
+            className="sidebar-collapse-toggle"
+            onClick={() => setIsSidebarOpen(false)}
+            title="Hide sidebar"
+            aria-label="Hide sidebar"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
         </div>
 
         <div className="side-selects-grid">
@@ -428,10 +440,26 @@ export default function App() {
       <main className="content">
         <header className="page-head">
           <div className="page-head-main">
-            <h1>
-              {VIEWS.find((v) => v.id === view)?.label} —{' '}
-              {new Date(year, month - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' })}
-            </h1>
+            <div className="page-head-title-row">
+              {!isSidebarOpen && (
+                <button
+                  type="button"
+                  className="sidebar-expand-toggle"
+                  onClick={() => setIsSidebarOpen(true)}
+                  title="Show sidebar"
+                  aria-label="Show sidebar"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                  <span>Sidebar</span>
+                </button>
+              )}
+              <h1>
+                {VIEWS.find((v) => v.id === view)?.label} —{' '}
+                {new Date(year, month - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' })}
+              </h1>
+            </div>
 
             {/* Compliance summary line: one plain sentence, no colours, no mono */}
             <div className="compliance-line">

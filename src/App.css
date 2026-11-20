@@ -2958,6 +2958,9 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
 }
 
 @media (max-width: 560px) {
+  .recovery-scenario-head { flex-direction: column; align-items: stretch; gap: 10px; }
+  .recovery-segmented { width: 100%; max-width: 100%; }
+  .recovery-segmented-btn { flex: 1 1 0; padding-left: 8px; padding-right: 8px; white-space: normal; }
   .recovery-scenario-form { align-items: stretch; }
   .recovery-field, .recovery-field-wide { min-width: 100%; }
   .recovery-scenario-preview { min-width: 100%; }

@@ -286,13 +286,28 @@ callers that only render text, while also returning `hard_failure_records` and
 - **Cross-pod move:** an explicit `CrossPodAuthorization` is required even when
   the employee already has a permanent destination allocation.
 
+### Temporary backup versus temporary reassignment
+
+- **Temporary backup** adds one date-specific assignment for a currently free
+  employee. It must not claim source metadata and removes nothing.
+- **Temporary reassignment** replaces the employee's existing date-specific
+  assignment. The directive must match the baseline source brand and process
+  set exactly, and the move is rejected if it would leave the source
+  understaffed or create another hard conflict.
+
+Both are temporary instructions layered over the permanent allocation model;
+neither edits `data.allocations`.
+
 ### Simulation and validation
 
 `simulateRecoveryDetailed()` / `_simulate_detailed()` clone the baseline roster,
 reject malformed directives, duplicate baseline assignments, unavailable
 employees, closed/missing destination processes and forged source metadata, and
-record exactly which assignments are removed and added. Coverage is recomputed
-for the destination, the source brand/processes and every other affected slot.
+record exactly which assignments are removed and added. All preconditions,
+including destination construction, run before any simulated removal is
+planned. A failed simulation returns the untouched baseline with empty
+`removed` and `added` lists. Coverage is recomputed for the destination, the
+source brand/processes and every other affected slot.
 
 `validateRecoveryProposal()` / `RosterRecoveryEngine.validate()` do not trust
 candidate flags, scores or reasons. They reconstruct the directive against the

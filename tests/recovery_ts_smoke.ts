@@ -361,6 +361,60 @@ function patched(entries: RosterEntry[]): RosterResult {
   assert.deepEqual(baseline, [entry('e15', 'b05', ['CS'])]);
 }
 
+// Reassignment preconditions are checked before the source assignment is
+// removed. Invalid simulations return the untouched baseline.
+{
+  const baseline = [entry('e15', 'b05', ['CS'])];
+  const directive: RecoveryAssignment = {
+    date: DATE,
+    employeeId: 'e15',
+    brandId: 'b04',
+    processId: 'CS',
+    type: 'temporary-reassignment',
+    fromBrandId: 'b05',
+    fromProcesses: ['CS'],
+  };
+  const valid = simulateRecoveryDetailed(data, baseline, directive);
+  assert.equal(valid.valid, true);
+  assert.deepEqual(valid.removed, baseline);
+  assert.deepEqual(valid.added, [entry('e15', 'b04', ['CS'])]);
+  assert.deepEqual(baseline, [entry('e15', 'b05', ['CS'])]);
+
+  const unavailableData: RosterData = {
+    ...data,
+    employees: data.employees.map((employee) =>
+      employee.id === 'e15'
+        ? { ...employee, leaves: [...employee.leaves, DATE] }
+        : employee,
+    ),
+  };
+  const unavailable = simulateRecoveryDetailed(
+    unavailableData,
+    baseline,
+    directive,
+  );
+  assert.equal(unavailable.valid, false);
+  assert.equal(unavailable.issues[0].code, 'EMPLOYEE_UNAVAILABLE');
+  assert.deepEqual(unavailable.entries, baseline);
+  assert.deepEqual(unavailable.removed, []);
+  assert.deepEqual(unavailable.added, []);
+  assert.deepEqual(baseline, [entry('e15', 'b05', ['CS'])]);
+
+  const closedBaseline = [entry('e15', 'b05', ['CS'], '2026-12-06')];
+  const closed = simulateRecoveryDetailed(data, closedBaseline, {
+    ...directive,
+    date: '2026-12-06',
+    brandId: 'b01',
+    processId: 'RET',
+  });
+  assert.equal(closed.valid, false);
+  assert.equal(closed.issues[0].code, 'TARGET_NOT_OPERATING');
+  assert.deepEqual(closed.entries, closedBaseline);
+  assert.deepEqual(closed.removed, []);
+  assert.deepEqual(closed.added, []);
+  assert.deepEqual(closedBaseline, [entry('e15', 'b05', ['CS'], '2026-12-06')]);
+}
+
 // Same-pod process experience does not authorize an assigned cross-brand move.
 {
   const entries = [entry('e15', 'b05', ['CS'])];

@@ -630,17 +630,9 @@ export function simulateRecoveryDetailed(
     }
   }
 
-  const removed =
-    directive.type === 'temporary-reassignment'
-      ? current.map((e) => ({ ...e, processes: [...e.processes] }))
-      : [];
-  let next =
-    directive.type === 'temporary-reassignment'
-      ? baseline.filter(
-          (e) => !(e.employeeId === directive.employeeId && e.date === directive.date),
-        )
-      : baseline;
-
+  // Build the complete destination entry before planning any removal. Every
+  // precondition above has passed, and a failure while constructing the
+  // destination still leaves the baseline and simulation plan untouched.
   const added: RosterEntry = {
     date: directive.date,
     employeeId: directive.employeeId,
@@ -655,8 +647,23 @@ export function simulateRecoveryDetailed(
     ),
     overriddenOff: isWeeklyOff(emp, directive.date),
   };
-  next = [...next, added];
-  return { entries: next, removed, added: [added], issues: [], valid: true };
+  const removed =
+    directive.type === 'temporary-reassignment'
+      ? current.map((e) => ({ ...e, processes: [...e.processes] }))
+      : [];
+  const retained =
+    directive.type === 'temporary-reassignment'
+      ? baseline.filter(
+          (e) => !(e.employeeId === directive.employeeId && e.date === directive.date),
+        )
+      : baseline;
+  return {
+    entries: [...retained, added],
+    removed,
+    added: [added],
+    issues: [],
+    valid: true,
+  };
 }
 
 /** Backwards-compatible helper returning only the simulated entries. */

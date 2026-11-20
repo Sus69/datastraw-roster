@@ -675,17 +675,9 @@ class RosterRecoveryEngine:
                     "A temporary backup must not claim a source assignment.",
                 )
 
-        removed = (
-            [RosterEntry(**e.to_dict()) for e in current]
-            if allocation_type == "temporary-reassignment"
-            else []
-        )
-        next_entries = [RosterEntry(**e.to_dict()) for e in baseline]
-        if allocation_type == "temporary-reassignment":
-            next_entries = [
-                e for e in next_entries if not (e.employee_id == emp_id and e.date == date)
-            ]
-
+        # Build the complete destination entry before planning any removal.
+        # Every precondition above has passed; a failure while constructing
+        # the destination still leaves the baseline and simulation plan intact.
         processes = cls._recovery_processes(
             input_data, emp_id, brand, process_id, allocation_type, date
         )
@@ -697,9 +689,18 @@ class RosterRecoveryEngine:
             is_weekly_off=get_weekday(date) in emp.weekly_off,
             is_backup=allocation_type == "temporary-backup",
         )
-        next_entries.append(added)
+        removed = (
+            [RosterEntry(**e.to_dict()) for e in current]
+            if allocation_type == "temporary-reassignment"
+            else []
+        )
+        retained = [RosterEntry(**e.to_dict()) for e in baseline]
+        if allocation_type == "temporary-reassignment":
+            retained = [
+                e for e in retained if not (e.employee_id == emp_id and e.date == date)
+            ]
         return {
-            "entries": next_entries,
+            "entries": [*retained, added],
             "removed": removed,
             "added": [added],
             "issues": [],

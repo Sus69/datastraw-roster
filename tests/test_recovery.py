@@ -671,3 +671,61 @@ def test_shared_recovery_ranking_parity_fixture(seed_data):
     assert {
         p.employee_id: list(p.ranking_key) for p in analysis.proposals
     } == parity["expected_keys"]
+
+
+def test_reassignment_simulation_is_atomic_before_mutation(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    baseline_entry = RosterEntry(
+        date="2026-12-01", employee_id="e15", brand_id="b05", processes=["CS"]
+    )
+    entries = [baseline_entry]
+    baseline = [entry.to_dict() for entry in entries]
+    directive = {
+        "date": "2026-12-01",
+        "employee_id": "e15",
+        "brand_id": "b04",
+        "process_id": "CS",
+        "type": "temporary-reassignment",
+        "from_brand_id": "b05",
+        "from_processes": ["CS"],
+    }
+
+    valid = RosterRecoveryEngine._simulate_detailed(input_data, entries, directive)
+    assert valid["valid"] is True
+    assert [entry.to_dict() for entry in valid["removed"]] == baseline
+    assert [
+        (entry.employee_id, entry.brand_id, entry.processes)
+        for entry in valid["added"]
+    ] == [("e15", "b04", ["CS"])]
+    assert [entry.to_dict() for entry in entries] == baseline
+
+    for emp in input_data.employees:
+        if emp.id == "e15":
+            emp.leaves.append("2026-12-01")
+    unavailable = RosterRecoveryEngine._simulate_detailed(
+        input_data, entries, directive
+    )
+    assert unavailable["valid"] is False
+    assert unavailable["issues"][0]["code"] == "EMPLOYEE_UNAVAILABLE"
+    assert [entry.to_dict() for entry in unavailable["entries"]] == baseline
+    assert unavailable["removed"] == []
+    assert unavailable["added"] == []
+    assert [entry.to_dict() for entry in entries] == baseline
+
+    closed_entries = [
+        RosterEntry(
+            date="2026-12-06", employee_id="e15", brand_id="b05", processes=["CS"]
+        )
+    ]
+    closed_baseline = [entry.to_dict() for entry in closed_entries]
+    closed = RosterRecoveryEngine._simulate_detailed(
+        input_data,
+        closed_entries,
+        {**directive, "date": "2026-12-06", "brand_id": "b01", "process_id": "RET"},
+    )
+    assert closed["valid"] is False
+    assert closed["issues"][0]["code"] == "TARGET_NOT_OPERATING"
+    assert [entry.to_dict() for entry in closed["entries"]] == closed_baseline
+    assert closed["removed"] == []
+    assert closed["added"] == []
+    assert [entry.to_dict() for entry in closed_entries] == closed_baseline

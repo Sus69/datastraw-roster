@@ -856,18 +856,19 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
 
 .month-map-table {
   width: 100%;
+  min-width: 780px;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 11px;
-  table-layout: fixed;
 }
 
 .map-col-emp {
-  width: 180px;
+  width: 160px;
 }
 
 .map-col-day {
-  width: auto;
+  width: 20px;
+  min-width: 20px;
 }
 
 .map-sticky-col {
@@ -875,10 +876,12 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   left: 0;
   background-color: var(--surface);
   z-index: 5;
+  padding-left: 8px;
   padding-right: 12px;
   text-align: left;
   border-right: 1px solid var(--border);
-  width: 180px;
+  width: 160px;
+  min-width: 140px;
   max-width: 180px;
 }
 
@@ -888,12 +891,16 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   color: var(--muted);
   text-align: left;
   padding-bottom: 6px;
+  background-color: var(--surface);
+  z-index: 10;
 }
 
 .map-day-header {
   text-align: center;
   padding-bottom: 6px;
   vertical-align: bottom;
+  min-width: 20px;
+  width: 20px;
 }
 
 .map-day-num {
@@ -916,6 +923,14 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   text-align: left;
 }
 
+.map-pod-sticky-inner {
+  position: sticky;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
 .map-pod-tag {
   font-weight: 600;
   font-size: 12px;
@@ -934,7 +949,7 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 1px 0;
+  padding: 1px 0 1px 8px;
   text-align: left;
 }
 
@@ -963,18 +978,25 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
 
 .map-cell-td {
   padding: 2px 1px;
-  height: 20px;
+  height: 22px;
+  min-width: 20px;
+  width: 20px;
   text-align: center;
   vertical-align: middle;
 }
 
 .map-square {
-  width: 100%;
-  max-width: 28px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  aspect-ratio: 1 / 1;
   border-radius: 2px;
   margin: 0 auto;
   cursor: pointer;
+  box-sizing: border-box;
+  display: block;
+  flex-shrink: 0;
   transition: transform 100ms ease, box-shadow 100ms ease;
 }
 
@@ -983,6 +1005,20 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   position: relative;
   z-index: 10;
   box-shadow: 0 2px 5px rgba(0,0,0,0.25);
+}
+
+@media (min-width: 1024px) {
+  .map-cell-td {
+    padding: 3px 2px;
+    height: 24px;
+  }
+
+  .map-square {
+    width: 16px;
+    height: 16px;
+    min-width: 16px;
+    max-width: 16px;
+  }
 }
 
 .map-square.work.proc-cs { background-color: var(--proc-cs-bg); }
@@ -1069,8 +1105,13 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
 .map-sq-sample {
   width: 10px;
   height: 10px;
+  min-width: 10px;
+  max-width: 10px;
+  aspect-ratio: 1 / 1;
   border-radius: 2px;
   display: inline-block;
+  vertical-align: middle;
+  box-sizing: border-box;
 }
 
 .map-sq-sample.proc-cs { background-color: var(--proc-cs-bg); }

@@ -94,9 +94,9 @@ export function MonthMap(props: MonthMapProps) {
       <div className="month-map-container">
         <table className={`month-map-table ${highlightGapsOnly ? 'highlight-gaps-mode' : ''}`}>
           <colgroup>
-            <col className="map-col-emp" />
+            <col className="map-col-emp" style={{ width: 160 }} />
             {result.days.map((d) => (
-              <col key={d} className="map-col-day" />
+              <col key={d} className="map-col-day" style={{ minWidth: 20, width: 22 }} />
             ))}
           </colgroup>
           <thead>
@@ -141,12 +141,14 @@ export function MonthMap(props: MonthMapProps) {
                     title={`Click to ${isCollapsed ? 'expand' : 'collapse'} ${pod.name}`}
                   >
                     <td className="map-sticky-col map-pod-name" colSpan={result.days.length + 1}>
-                      <span className="map-pod-toggle-icon">{isCollapsed ? '[+]' : '[-]'}</span>
-                      <span className="map-pod-tag">{pod.name}</span>
-                      <span className="map-pod-count">({podEmployees.length} staff)</span>
-                      <span className="map-pod-toggle-hint">
-                        {isCollapsed ? 'Click to expand' : 'Click to collapse'}
-                      </span>
+                      <div className="map-pod-sticky-inner">
+                        <span className="map-pod-toggle-icon">{isCollapsed ? '[+]' : '[-]'}</span>
+                        <span className="map-pod-tag">{pod.name}</span>
+                        <span className="map-pod-count">({podEmployees.length} staff)</span>
+                        <span className="map-pod-toggle-hint">
+                          {isCollapsed ? 'Click to expand' : 'Click to collapse'}
+                        </span>
+                      </div>
                     </td>
                   </tr>
 

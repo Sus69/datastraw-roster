@@ -14,7 +14,6 @@ import {
 import type { Employee, OperatingRule, ProcessId, RecoveryAssignment } from './data/seed';
 import {
   generateRoster,
-  generateRosterCPSAT,
   isHardUnavailable,
   isWeeklyOff,
   rosterToCsv,
@@ -220,27 +219,9 @@ export default function App() {
 
   const data = useMemo(() => mergeData(overrides), [overrides]);
   const [result, setResult] = useState<RosterResult>(() => generateRoster(mergeData(loadOverrides()), 2026, 12));
-  const [isSolving, setIsSolving] = useState<boolean>(false);
 
   useEffect(() => {
-    let cancelled = false;
-    queueMicrotask(() => {
-      if (!cancelled) setIsSolving(true);
-    });
-    generateRosterCPSAT(data, year, month).then((res) => {
-      if (!cancelled) {
-        setResult(res);
-        setIsSolving(false);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        const fallback = generateRoster(data, year, month);
-        fallback.solverStatus = 'FEASIBLE';
-        setResult(fallback);
-        setIsSolving(false);
-      }
-    });
-    return () => { cancelled = true; };
+    setResult(generateRoster(data, year, month));
   }, [data, year, month]);
 
   const monthLabel = `${year}-${String(month).padStart(2, '0')}`;
@@ -502,7 +483,6 @@ export default function App() {
             {/* Compliance summary line: one plain sentence, no colours, no mono */}
             <div className="compliance-line">
               {gapsCount} coverage gap{gapsCount !== 1 ? 's' : ''}, {understaffedCount} understaffed day{understaffedCount !== 1 ? 's' : ''}, {overridesCount} weekly-off override{overridesCount !== 1 ? 's' : ''}. {result.stats.coveredSlots} of {result.stats.operatingSlots} shifts covered.
-              {isSolving && <span className="comp-solving"> Solving...</span>}
             </div>
           </div>
         </header>
@@ -1419,7 +1399,7 @@ function InspectorModal(props: InspectorModalProps) {
                   <div>
                     <strong>Planned leave (Approved)</strong>
                     <div className="modal-notice-sub">
-                      Hard constraint. The CP-SAT engine strictly prohibits scheduling on approved leave.
+                      Hard constraint. The engine never schedules anyone on approved leave.
                     </div>
                   </div>
                 </div>

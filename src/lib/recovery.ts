@@ -680,7 +680,7 @@ export function simulateRecovery(
 function baselineCoverage(data: RosterData, result: RosterResult, date: string): DayCoverage[] {
   // Always derive baseline from the supplied entries. This keeps discovery,
   // simulation and validation consistent even when a caller supplies a patched
-  // entry list (and mirrors the Python implementation).
+  // entry list.
   return computeDayCoverage(data, result.entries, date);
 }
 

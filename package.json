@@ -8,12 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "python -m pytest tests -q && npm run test:ts",
-    "test:ts": "tsc -p tsconfig.recovery-tests.json && node -e \"require('node:fs').writeFileSync('.tmp-recovery-ts/package.json', JSON.stringify({type:'commonjs'}))\" && node .tmp-recovery-ts/tests/recovery_ts_smoke.js",
-    "engine:solve": "python -m engine.cli solve",
-    "engine:validate": "python -m engine.cli validate",
-    "engine:reoptimize": "python -m engine.cli reoptimize",
-    "engine:server": "python -m engine.server 8000"
+    "test": "npm run test:ts",
+    "test:ts": "tsc -p tsconfig.recovery-tests.json && node -e \"require('node:fs').writeFileSync('.tmp-recovery-ts/package.json', JSON.stringify({type:'commonjs'}))\" && node .tmp-recovery-ts/tests/recovery_ts_smoke.js"
   },
   "dependencies": {
     "react": "^19.3.1",

@@ -26,7 +26,8 @@ npm run preview  # serve the production build locally
   have one dedicated employee handling all of that brand's processes; BookBarn
   has 2 employees and WellnessWave has 3. The remaining employees are shared
   across brands or act as pod floaters (backup cover). Two additional recovery
-  specialists (e35, e36) strengthen GlowKart, BookBarn and TechTrove cover.
+  specialists (e35, e36) strengthen GlowKart, BookBarn and TechTrove cover;
+  e36's TechTrove cover is backed by an explicit cross-pod authorization.
 - **Working rules per brand/process:** 365-day ops, daily except public
   holidays, or Sundays + public holidays off. Different processes in the same
   brand can have different rules. Minimum staffing is configurable per
@@ -49,9 +50,10 @@ npm run preview  # serve the production build locally
 - **Roster recovery:** "Find backup" is now a constraint-aware recovery engine.
   It discovers unassigned same-brand and same-pod employees plus safely
   reassignable employees on other brands, simulates the whole day's coverage,
-  rejects moves that would create another gap, ranks valid repairs, and keeps
-  every repair date-specific so permanent allocations are never silently
-  changed.
+  rejects moves that would create another gap, independently validates the
+  resulting directive, ranks valid repairs lexicographically, and keeps every
+  repair date-specific so permanent allocations and unrelated roster entries
+  are never silently changed.
 - **Extras:** CSV export of the roster, search/filter, backup suggestions on
   every conflict.
 
@@ -60,8 +62,10 @@ npm run preview  # serve the production build locally
 - All brand and employee names are fictional. The public holidays listed are
   real India holidays for Nov 2026 – Feb 2027 (Guru Nanak Jayanti, Christmas,
   New Year's Day, Makar Sankranti, Republic Day, Shivaji Maharaj Jayanti).
-- One employee works at most one brand/process per day. An employee allocated
-  to several brands is scheduled to the most-constrained slot first.
+- One employee works at most one brand per day. Under brand semantics, one
+  shift covers every process the employee is allocated to at that brand.
+  An employee allocated to several brands is scheduled to the most-constrained
+  slot first.
 - Weekly offs are **preferences**, not hard blocks: required client coverage
   beats a preferred weekly off, but the override is flagged as a warning.
   Planned leaves and comp-offs are **hard** unavailability — the engine never
@@ -160,10 +164,10 @@ database (Supabase/PostgreSQL, which Datastraw already uses) with an API,
 add pagination/virtualisation to the grid (a 60-employee × 31-day table is
 still fine, but 200+ needs it), add role-based access (pod leads edit only
 their pod), and add an approval workflow so a generated roster is a draft
-until a manager publishes it. I would also add automated tests for the engine
-(there is currently none — the build is the only check) and a proper
-optimisation pass (e.g. fair distribution of weekly-off overrides) once the
-team is large enough for fairness to matter.
+until a manager publishes it. I would also expand the existing automated
+Python and TypeScript recovery tests into a property-based scheduling suite,
+and add a proper optimisation pass (e.g. fair distribution of weekly-off
+overrides) once the team is large enough for fairness to matter.
 
 ### 8. If you had one additional week to work on this, what would you improve first?
 
@@ -191,7 +195,8 @@ engine/
 tests/
   generate_fixture.py Generator and independent validator for datastraw_self_test_fixture.json
   test_scheduling.py Scheduling / CP-SAT pytest suite
-  test_recovery.py   Recovery, reassignment and seed-scenario tests (34 total)
+  test_recovery.py   Recovery, authorization, simulation, validation and seed scenarios
+  recovery_ts_smoke.ts TypeScript parity smoke tests for the same recovery rules
 src/
   data/seed.ts      Types + seed data (employees, brands, pods, allocations, holidays)
   lib/engine.ts     Roster generation, validation, CP-SAT bridge, CSV export
@@ -235,16 +240,77 @@ The browser engine uses the business rule **one brand per employee per day,
 covering every allocated process at that brand**. The legacy CP-SAT model was
 process-granular (one brand/process per day). `SchedulingInput.assignment_semantics`
 now makes this explicit: `"process"` preserves the existing CP-SAT test contract,
-while `"brand"` applies the UI business rule. Recovery uses the same candidate,
-coverage-simulation and ranking rules in `src/lib/recovery.ts` and
-`engine/recovery.py`, so the two stacks no longer disagree about what a safe
-reassignment is.
+while `"brand"` applies the UI business rule.
+
+Recovery uses the same eligibility, immutable simulation, independent
+validation and lexicographical ranking rules in `src/lib/recovery.ts` and
+`engine/recovery.py`. Both require explicit `CrossPodAuthorization` entries for
+pod-boundary moves, validate directive source metadata against the baseline,
+and compare new hard failures against the pre-existing baseline rather than
+invalidating a repair for an unrelated old conflict. The Python validator
+exposes hard failures as messages, so recovery maps its known
+incompatible-duty and authorization messages to the same structured decision
+codes used by TypeScript.
+
+## Recovery engine architecture
+
+### Authorization policy
+
+- **Direct backup:** employee is free, available, and explicitly authorized for
+  the destination brand + process.
+- **Same-pod backup:** employee is free, belongs to the destination pod, and has
+  the required process allocation. Pod membership alone never grants process
+  permission.
+- **Same-brand reassignment:** employee has destination authorisation and the
+  move preserves source coverage.
+- **Cross-brand reassignment:** employee has explicit destination brand +
+  process authorization (or an explicit brand/process cross-pod grant).
+  Generic process experience is not enough.
+- **Cross-pod move:** an explicit `CrossPodAuthorization` is required even when
+  the employee already has a permanent destination allocation.
+
+### Simulation and validation
+
+`simulateRecoveryDetailed()` / `_simulate_detailed()` clone the baseline roster,
+reject malformed directives, duplicate baseline assignments, unavailable
+employees, closed/missing destination processes and forged source metadata, and
+record exactly which assignments are removed and added. Coverage is recomputed
+for the destination, the source brand/processes and every other affected slot.
+
+`validateRecoveryProposal()` / `RosterRecoveryEngine.validate()` do not trust
+candidate flags, scores or reasons. They reconstruct the directive against the
+baseline, re-check authorization and availability, verify the destination entry,
+reject new source understaffing and new hard conflicts, allow unrelated
+pre-existing conflicts, and prove that permanent allocations and unrelated
+roster entries are unchanged.
+
+### Ranking
+
+Valid repairs are ordered lexicographically, never by weights:
+
+1. fewer assignment changes,
+2. lower actual source coverage loss,
+3. fewer source processes left exactly at minimum staffing,
+4. lower primary-resource disruption,
+5. no weekly-off override,
+6. lower additional staffing burden,
+7. lower current workload,
+8. stable employee-ID tie-break.
+
+Each candidate exposes its `rankingKey` and a `rankingExplanation` so the UI can
+show why it was selected and how alternatives compare.
 
 ## Commands
 
 ```bash
-# Run complete test suite (scheduling + recovery)
+# Run complete test suite (Python scheduling/recovery + TypeScript recovery parity)
 npm test
+
+# Run just the Python recovery/scheduling suite
+python -m pytest tests -q
+
+# Run just the TypeScript recovery parity smoke tests
+npm run test:ts
 
 # Run CP-SAT solver via CLI
 npm run engine:solve -- --input datastraw_self_test_fixture.json --output roster.json

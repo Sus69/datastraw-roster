@@ -14,6 +14,7 @@ import {
   CROSS_POD_AUTHORIZATIONS,
   EMPLOYEES,
   HOLIDAYS,
+  type RecoveryAssignment,
 } from '../src/data/seed';
 import {
   generateRoster,
@@ -23,6 +24,8 @@ import {
 } from '../src/lib/engine';
 import {
   findRecoveryOptions,
+  simulateRecovery,
+  simulateRecoveryDetailed,
   validateRecoveryProposal,
   type RecoveryCandidate,
 } from '../src/lib/recovery';
@@ -59,8 +62,9 @@ function entry(
   employeeId: string,
   brandId: string,
   processes: RosterEntry['processes'],
+  date = DATE,
 ): RosterEntry {
-  return { date: DATE, employeeId, brandId, processes, overriddenOff: false };
+  return { date, employeeId, brandId, processes, overriddenOff: false };
 }
 
 function patched(entries: RosterEntry[]): RosterResult {
@@ -303,6 +307,221 @@ function patched(entries: RosterEntry[]): RosterResult {
   const analysis = findRecoveryOptions(data, patched(entries), DATE, 'b04', 'CS');
   validateRecoveryProposal(data, patched(entries), candidate(analysis, 'e15'));
   assert.equal(JSON.stringify(data.allocations), before);
+}
+
+// Simulation rejects invalid input explicitly and never mutates the baseline.
+{
+  const baseline = [entry('e15', 'b05', ['CS'])];
+  const base: RecoveryAssignment = {
+    date: DATE,
+    employeeId: 'e15',
+    brandId: 'b04',
+    processId: 'CS',
+    type: 'temporary-backup',
+  };
+  const invalidDate = simulateRecoveryDetailed(data, baseline, {
+    ...base,
+    date: '2026-13-01',
+  });
+  assert.equal(invalidDate.valid, false);
+  assert.equal(invalidDate.issues[0].code, 'INVALID_DIRECTIVE');
+
+  const unknownTarget = simulateRecoveryDetailed(data, baseline, {
+    ...base,
+    processId: 'ZZ' as RosterEntry['processes'][number],
+  });
+  assert.equal(unknownTarget.issues[0].code, 'UNKNOWN_TARGET');
+
+  const alreadyAssigned = simulateRecoveryDetailed(data, baseline, base);
+  assert.equal(alreadyAssigned.issues[0].code, 'ALREADY_ASSIGNED');
+
+  const duplicated = [...baseline, entry('e15', 'b06', ['CS'])];
+  const duplicate = simulateRecoveryDetailed(data, duplicated, base);
+  assert.equal(duplicate.issues[0].code, 'DUPLICATE_ASSIGNMENT');
+
+  const forgedSourceDirective: RecoveryAssignment = {
+    ...base,
+    type: 'temporary-reassignment',
+    fromBrandId: 'b06',
+    fromProcesses: ['CS'],
+  };
+  const forgedSource = simulateRecoveryDetailed(
+    data,
+    baseline,
+    forgedSourceDirective,
+  );
+  assert.equal(forgedSource.issues[0].code, 'SOURCE_METADATA_MISMATCH');
+  assert.throws(() => simulateRecovery(data, baseline, forgedSourceDirective));
+  assert.deepEqual(baseline, [entry('e15', 'b05', ['CS'])]);
+}
+
+// Same-pod process experience does not authorize an assigned cross-brand move.
+{
+  const entries = [entry('e15', 'b05', ['CS'])];
+  const analysis = findRecoveryOptions(data, patched(entries), DATE, 'b06', 'CS');
+  assert.equal(rejected(analysis, 'e15').rejectionCode, 'NO_DESTINATION_AUTHORIZATION');
+}
+
+// Invalid dates and processes are rejected before validation proceeds.
+{
+  const entries = result.entries.filter(
+    (e) => !(e.date === DATE && e.employeeId === 'e15'),
+  );
+  const analysis = findRecoveryOptions(data, patched(entries), DATE, 'b04', 'CS');
+  const proposal = candidate(analysis, 'e15');
+
+  const invalidDate: RecoveryCandidate = {
+    ...proposal,
+    directive: { ...proposal.directive!, date: '2026-13-01' },
+  };
+  assert.ok(
+    validateRecoveryProposal(data, patched(entries), invalidDate).failures.some(
+      (f) => f.code === 'MALFORMED_DIRECTIVE',
+    ),
+  );
+
+  const invalidProcess: RecoveryCandidate = {
+    ...proposal,
+    targetAssignment: {
+      ...proposal.targetAssignment,
+      processId: 'ZZ' as RosterEntry['processes'][number],
+    },
+    directive: {
+      ...proposal.directive!,
+      processId: 'ZZ' as RosterEntry['processes'][number],
+    },
+  };
+  assert.ok(
+    validateRecoveryProposal(data, patched(entries), invalidProcess).failures.some(
+      (f) => f.code === 'UNKNOWN_TARGET',
+    ),
+  );
+}
+
+// A closed destination process is rejected even if validation is bypassed.
+{
+  const entries = result.entries.filter(
+    (e) => !(e.date === DATE && e.employeeId === 'e15'),
+  );
+  const analysis = findRecoveryOptions(data, patched(entries), DATE, 'b04', 'CS');
+  const proposal = candidate(analysis, 'e15');
+  const closed: RecoveryCandidate = {
+    ...proposal,
+    targetAssignment: {
+      ...proposal.targetAssignment,
+      brandId: 'b01',
+      processId: 'RET',
+    },
+    directive: {
+      ...proposal.directive!,
+      date: '2026-12-06',
+      brandId: 'b01',
+      processId: 'RET',
+    },
+  };
+  assert.ok(
+    validateRecoveryProposal(data, patched(entries), closed).failures.some(
+      (f) => f.code === 'TARGET_NOT_OPERATING',
+    ),
+  );
+}
+
+// Incompatible destination duties are rejected when the model declares them.
+{
+  const incompatibleData: RosterData = {
+    ...data,
+    allocations: [
+      ...ALLOCATIONS,
+      { employeeId: 'e15', brandId: 'b04', processId: 'ACC', role: 'secondary' },
+    ],
+    incompatiblePairs: [
+      {
+        brandId1: 'b04',
+        processId1: 'CS',
+        brandId2: 'b04',
+        processId2: 'ACC',
+      },
+    ],
+  };
+  const entries = [
+    entry('e10', 'b04', ['CS']),
+    entry('e12', 'b05', ['CS']),
+    entry('e15', 'b05', ['CS']),
+  ];
+  const analysis = findRecoveryOptions(
+    incompatibleData,
+    patched(entries),
+    DATE,
+    'b04',
+    'CS',
+  );
+  assert.equal(rejected(analysis, 'e15').rejectionCode, 'INCOMPATIBLE_DUTY');
+
+  const normal = findRecoveryOptions(data, patched(entries), DATE, 'b04', 'CS');
+  const proposal = candidate(normal, 'e15');
+  const validation = validateRecoveryProposal(
+    incompatibleData,
+    patched(entries),
+    proposal,
+  );
+  assert.ok(validation.failures.some((f) => f.code === 'INCOMPATIBLE_DUTY'));
+}
+
+// Validator detects new source understaffing, not just discovery failures.
+{
+  const entries = [entry('e35', 'b02', ['RET'])];
+  const candidateWithSource = {
+    employeeId: 'e35',
+    name: 'Isha Rao',
+    currentAssignment: {
+      brandId: 'b02',
+      brandName: 'FitFuel',
+      processes: ['RET'],
+      isPrimary: false,
+    },
+    targetAssignment: {
+      brandId: 'b01',
+      brandName: 'GlowKart',
+      processId: 'RET',
+      processName: 'Retention',
+    },
+    recoveryType: 'cross-brand-reassignment',
+    allocationType: 'temporary-reassignment',
+    changedAssignments: 2,
+    removedAssignments: [],
+    addedAssignments: [],
+    sourceCoverageLoss: 0,
+    primaryDisruption: 0,
+    weeklyOffOverrides: 0,
+    additionalStaffing: 0,
+    sourceImpact: [],
+    sourceProcessesAtMinimum: 0,
+    currentWorkload: 0,
+    coverageImpact: [],
+    hardConstraintsSatisfied: true,
+    valid: true,
+    reasons: [],
+    rankingKey: [],
+    rankingExplanation: '',
+    score: 0,
+    directive: {
+      date: DATE,
+      employeeId: 'e35',
+      brandId: 'b01',
+      processId: 'RET',
+      type: 'temporary-reassignment',
+      fromBrandId: 'b02',
+      fromProcesses: ['RET'],
+    },
+  } satisfies RecoveryCandidate;
+  const validation = validateRecoveryProposal(
+    data,
+    patched(entries),
+    candidateWithSource,
+  );
+  assert.equal(validation.valid, false);
+  assert.ok(validation.failures.some((f) => f.code === 'SOURCE_UNDERSTAFFED'));
+  assert.ok(validation.failures.some((f) => f.code === 'NEW_HARD_CONSTRAINT'));
 }
 
 // Retained BookBarn regression: both BookBarn employees are on leave, but a

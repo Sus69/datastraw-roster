@@ -40,6 +40,7 @@ import {
   type OperatingRule,
   type ProcessId,
   type CrossPodAuthorization,
+  type IncompatiblePair,
   type RecoveryAssignment,
 } from '../data/seed';
 import { findSafeBackups } from './recovery';
@@ -59,6 +60,8 @@ export interface RosterData {
    *  brand/process outside their own pod. General process experience is not
    *  enough to authorize a cross-pod move. */
   crossPodAuthorizations?: CrossPodAuthorization[];
+  /** Explicit brand/process pairs that cannot be worked in the same day. */
+  incompatiblePairs?: IncompatiblePair[];
 }
 
 export interface RosterEntry {

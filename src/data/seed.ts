@@ -82,6 +82,14 @@ export interface CrossPodAuthorization {
   processId: ProcessId;
 }
 
+/** Explicitly incompatible brand/process duties for one employee-day. */
+export interface IncompatiblePair {
+  brandId1: string;
+  processId1: ProcessId;
+  brandId2: string;
+  processId2: ProcessId;
+}
+
 export interface RecoveryAssignment {
   /** ISO date the instruction applies to. */
   date: string;

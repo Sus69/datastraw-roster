@@ -391,6 +391,179 @@ def test_ranking_is_lexicographic_and_deterministic(seed_data):
             assert left.employee_id < right.employee_id
 
 
+def test_simulation_rejects_invalid_inputs_without_mutation(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b05", processes=["CS"])]
+    baseline = [e.to_dict() for e in entries]
+
+    def simulate(directive):
+        result = RosterRecoveryEngine._simulate_detailed(input_data, entries, directive)
+        assert [e.to_dict() for e in entries] == baseline
+        return result
+
+    base = {
+        "date": "2026-12-01",
+        "employee_id": "e15",
+        "brand_id": "b04",
+        "process_id": "CS",
+        "type": "temporary-backup",
+    }
+    assert simulate({**base, "date": "2026-13-01"})["issues"][0]["code"] == "INVALID_DIRECTIVE"
+    assert simulate({**base, "process_id": "ZZ"})["issues"][0]["code"] == "UNKNOWN_TARGET"
+    assert simulate({**base, "employee_id": "e99"})["issues"][0]["code"] == "UNKNOWN_EMPLOYEE"
+    assert simulate({**base, "type": "temporary-backup"})["issues"][0]["code"] == "ALREADY_ASSIGNED"
+
+    duplicated = entries + [
+        RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b06", processes=["CS"])
+    ]
+    duplicate_result = RosterRecoveryEngine._simulate_detailed(
+        input_data, duplicated, {**base, "type": "temporary-backup"}
+    )
+    assert duplicate_result["valid"] is False
+    assert duplicate_result["issues"][0]["code"] == "DUPLICATE_ASSIGNMENT"
+
+    forged_source = {
+        "date": "2026-12-01",
+        "employee_id": "e15",
+        "brand_id": "b04",
+        "process_id": "CS",
+        "type": "temporary-reassignment",
+        "from_brand_id": "b06",
+        "from_processes": ["CS"],
+    }
+    assert simulate(forged_source)["issues"][0]["code"] == "SOURCE_METADATA_MISMATCH"
+    closed = {
+        **base,
+        "date": "2026-12-06",
+        "brand_id": "b01",
+        "process_id": "RET",
+    }
+    assert simulate(closed)["issues"][0]["code"] == "TARGET_NOT_OPERATING"
+
+    for emp in input_data.employees:
+        if emp.id == "e15":
+            emp.leaves.append("2026-12-01")
+    assert simulate(base)["issues"][0]["code"] == "EMPLOYEE_UNAVAILABLE"
+    with pytest.raises(ValueError):
+        RosterRecoveryEngine._simulate(input_data, entries, forged_source)
+
+
+def test_unauthorized_same_pod_cross_brand_reassignment_is_rejected(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    # e15 has generic CS experience and is in Pod Beta, but no b06-CS allocation.
+    entries = [RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b05", processes=["CS"])]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b06", "CS")
+    e15 = next(p for p in analysis.rejected if p.employee_id == "e15")
+    assert e15.rejection_code == "NO_DESTINATION_AUTHORIZATION"
+
+
+def test_invalid_dates_and_processes_are_rejected(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [e for e in _day_entries(input_data) if e.employee_id != "e15"]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    proposal = next(p for p in analysis.proposals if p.employee_id == "e15")
+
+    invalid_date = copy.deepcopy(proposal)
+    invalid_date.directive["date"] = "2026-13-01"
+    result = RosterRecoveryEngine.validate(input_data, entries, invalid_date)
+    assert any(f["code"] == "MALFORMED_DIRECTIVE" for f in result["failures"])
+
+    invalid_process = copy.deepcopy(proposal)
+    invalid_process.directive["process_id"] = "ZZ"
+    invalid_process.target_assignment["process_id"] = "ZZ"
+    result = RosterRecoveryEngine.validate(input_data, entries, invalid_process)
+    assert any(f["code"] == "UNKNOWN_TARGET" for f in result["failures"])
+
+
+def test_invalid_operating_day_is_rejected(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-06")
+    entries = [RosterEntry(date="2026-12-06", employee_id="e15", brand_id="b05", processes=["CS"])]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-06", "b01", "RET")
+    assert all(p.rejection_code == "TARGET_NOT_OPERATING" for p in analysis.rejected)
+
+
+def test_multiple_brand_daily_assignments_are_detected(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [
+        RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b05", processes=["CS"]),
+        RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b06", processes=["CS"]),
+    ]
+    report = RosterValidator.validate(input_data, entries)
+    assert report.is_valid is False
+    assert any("Multiple daily assignments" in message for message in report.hard_failures)
+
+
+def test_incompatible_duty_is_rejected(seed_data):
+    data = copy.deepcopy(seed_data)
+    data["assignment_semantics"] = "brand"
+    data["dates"] = ["2026-12-01"]
+    for emp in data["employees"]:
+        emp["leaves"] = []
+        emp["comp_offs"] = []
+    data["incompatible_pairs"] = [
+        {
+            "brand_id_1": "b04",
+            "process_id_1": "CS",
+            "brand_id_2": "b04",
+            "process_id_2": "ACC",
+        }
+    ]
+    data["allocations"].append(
+        {"employeeId": "e15", "brandId": "b04", "processId": "ACC", "role": "secondary"}
+    )
+    input_data = SchedulingInput.from_dict(data)
+    entries = [
+        RosterEntry(date="2026-12-01", employee_id="e10", brand_id="b04", processes=["CS"]),
+        RosterEntry(date="2026-12-01", employee_id="e12", brand_id="b05", processes=["CS"]),
+        RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b05", processes=["CS"]),
+    ]
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    rejected = next(p for p in analysis.rejected if p.employee_id == "e15")
+    assert rejected.rejection_code == "INCOMPATIBLE_DUTY"
+
+    normal_input = _brand_day_input(seed_data, "2026-12-01")
+    normal = RosterRecoveryEngine.analyze(
+        normal_input, entries, "2026-12-01", "b04", "CS"
+    )
+    proposal = next(p for p in normal.proposals if p.employee_id == "e15")
+    result = RosterRecoveryEngine.validate(input_data, entries, proposal)
+    assert result["valid"] is False
+    assert any(f["code"] == "INCOMPATIBLE_DUTY" for f in result["failures"])
+
+
+def test_source_understaffing_is_rejected_by_validator(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [RosterEntry(date="2026-12-01", employee_id="e35", brand_id="b02", processes=["RET"])]
+    directive = {
+        "date": "2026-12-01",
+        "employee_id": "e35",
+        "brand_id": "b01",
+        "process_id": "RET",
+        "type": "temporary-reassignment",
+        "from_brand_id": "b02",
+        "from_processes": ["RET"],
+    }
+    candidate = RecoveryCandidate(
+        employee_id="e35",
+        name="Isha Rao",
+        current_assignment={"brand_id": "b02", "brand_name": "FitFuel", "processes": ["RET"]},
+        target_assignment={"brand_id": "b01", "brand_name": "GlowKart", "process_id": "RET"},
+        recovery_type="cross-brand-reassignment",
+        allocation_type="temporary-reassignment",
+        changed_assignments=2,
+        primary_disruption=0,
+        weekly_off_overrides=0,
+        additional_staffing=0,
+        hard_constraints_satisfied=True,
+        valid=True,
+        directive=directive,
+    )
+    result = RosterRecoveryEngine.validate(input_data, entries, candidate)
+    codes = {failure["code"] for failure in result["failures"]}
+    assert "SOURCE_UNDERSTAFFED" in codes
+    assert "NEW_HARD_CONSTRAINT" in codes
+
+
 def test_bookbarn_december_21_recovery(seed_data):
     data = copy.deepcopy(seed_data)
     data["assignment_semantics"] = "brand"

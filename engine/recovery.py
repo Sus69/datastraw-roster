@@ -50,6 +50,8 @@ RECOVERY_REJECTION_TEXT = {
         "Reassignment would cause understaffing elsewhere (cascading coverage failure)."
     ),
     "TARGET_NOT_COVERED": "The move would not actually cover the target slot.",
+    "INCOMPATIBLE_DUTY": "The destination processes are explicitly incompatible.",
+    "SIMULATION_INVALID": "The recovery directive could not be simulated safely.",
     "NO_ELIGIBLE_EMPLOYEE": "No eligible employee exists in the permitted pool.",
 }
 
@@ -258,6 +260,29 @@ def _directive_source(directive: Dict[str, object]) -> tuple[object, object]:
     from_brand = directive.get("from_brand_id", directive.get("fromBrandId"))
     from_processes = directive.get("from_processes", directive.get("fromProcesses"))
     return from_brand, from_processes
+
+
+def _find_incompatible_duty(
+    input_data: SchedulingInput, brand_id: str, processes: List[ProcessId]
+) -> Optional[tuple[ProcessId, ProcessId]]:
+    for index, first in enumerate(processes):
+        for second in processes[index + 1:]:
+            for pair in input_data.incompatible_pairs:
+                forward = (
+                    pair.brand_id_1 == brand_id
+                    and pair.process_id_1 == first
+                    and pair.brand_id_2 == brand_id
+                    and pair.process_id_2 == second
+                )
+                reverse = (
+                    pair.brand_id_1 == brand_id
+                    and pair.process_id_1 == second
+                    and pair.brand_id_2 == brand_id
+                    and pair.process_id_2 == first
+                )
+                if forward or reverse:
+                    return first, second
+    return None
 
 
 class RosterRecoveryEngine:
@@ -551,29 +576,115 @@ class RosterRecoveryEngine:
     def _simulate_detailed(
         cls, input_data: SchedulingInput, entries: List[RosterEntry], directive: Dict[str, object]
     ) -> Dict[str, object]:
-        """Return immutable simulated entries plus the exact removed/added assignments."""
+        """Return immutable entries, exact changes, and explicit invalid-input issues."""
+        baseline = [RosterEntry(**e.to_dict()) for e in entries]
+        issues: List[Dict[str, str]] = []
+
+        def failed(code: str, message: str) -> Dict[str, object]:
+            return {
+                "entries": baseline,
+                "removed": [],
+                "added": [],
+                "issues": [*issues, {"code": code, "message": message}],
+                "valid": False,
+            }
+
+        required = ("date", "employee_id", "brand_id", "process_id", "type")
+        if not isinstance(directive, dict) or any(
+            not isinstance(directive.get(key), str) or not directive.get(key)
+            for key in required
+        ):
+            return failed("INVALID_DIRECTIVE", "Recovery directive is malformed or incomplete.")
+        try:
+            datetime.date.fromisoformat(str(directive["date"]))
+        except ValueError:
+            return failed("INVALID_DIRECTIVE", "Recovery directive has an invalid date.")
+
         emp_id = str(directive["employee_id"])
         date = str(directive["date"])
         brand_id = str(directive["brand_id"])
         process_id = str(directive["process_id"])
         allocation_type = str(directive["type"])
-        brand = next((b for b in input_data.brands if b.id == brand_id), None)
-        emp = next((e for e in input_data.employees if e.id == emp_id), None)
+        if allocation_type not in ("temporary-backup", "temporary-reassignment"):
+            return failed("INVALID_DIRECTIVE", "Recovery directive has an unknown assignment type.")
+        source_brand, source_processes = _directive_source(directive)
+        if source_brand is not None and not isinstance(source_brand, str):
+            return failed("INVALID_DIRECTIVE", "Recovery directive has malformed source metadata.")
+        if source_processes is not None and (
+            not isinstance(source_processes, list)
+            or not all(isinstance(process, str) for process in source_processes)
+        ):
+            return failed("INVALID_DIRECTIVE", "Recovery directive has malformed source metadata.")
 
-        baseline = [RosterEntry(**e.to_dict()) for e in entries]
+        current = [e for e in baseline if e.employee_id == emp_id and e.date == date]
+        if len(current) > 1:
+            return failed(
+                "DUPLICATE_ASSIGNMENT",
+                f"{emp_id} already has {len(current)} assignments on {date}.",
+            )
+
+        brand = next((b for b in input_data.brands if b.id == brand_id), None)
+        target_bp = (
+            next((p for p in brand.processes if p.process_id == process_id), None)
+            if brand
+            else None
+        )
+        emp = next((e for e in input_data.employees if e.id == emp_id), None)
+        if emp is None:
+            return failed("UNKNOWN_EMPLOYEE", f"Unknown employee {emp_id}.")
+        if brand is None or target_bp is None:
+            return failed("UNKNOWN_TARGET", f"Unknown destination {brand_id}-{process_id}.")
+        if not is_process_operating(
+            target_bp.rule,
+            date,
+            {h.date for h in input_data.holidays},
+            set(target_bp.custom_operating_dates),
+        ):
+            return failed(
+                "TARGET_NOT_OPERATING",
+                f"{brand.name} {process_id} is not operating on {date}.",
+            )
+        if date in emp.leaves or date in emp.comp_offs:
+            return failed("EMPLOYEE_UNAVAILABLE", f"{emp.name} is unavailable on {date}.")
+
+        from_brand, from_processes = _directive_source(directive)
+        has_source_metadata = from_brand is not None or (
+            isinstance(from_processes, list) and len(from_processes) > 0
+        )
+        if allocation_type == "temporary-reassignment":
+            if (
+                len(current) != 1
+                or from_brand != current[0].brand_id
+                or not isinstance(from_processes, list)
+                or not all(isinstance(p, str) for p in from_processes)
+                or not _same_process_set(list(from_processes), current[0].processes)
+            ):
+                return failed(
+                    "SOURCE_METADATA_MISMATCH",
+                    "Source metadata does not match the baseline assignment.",
+                )
+        else:
+            if current:
+                return failed(
+                    "ALREADY_ASSIGNED",
+                    "A temporary backup cannot be added for an employee who is already assigned.",
+                )
+            if has_source_metadata:
+                return failed(
+                    "SOURCE_METADATA_MISMATCH",
+                    "A temporary backup must not claim a source assignment.",
+                )
+
         removed = (
-            [RosterEntry(**e.to_dict()) for e in baseline]
+            [RosterEntry(**e.to_dict()) for e in current]
             if allocation_type == "temporary-reassignment"
             else []
         )
-        removed = [e for e in removed if e.employee_id == emp_id and e.date == date]
         next_entries = [RosterEntry(**e.to_dict()) for e in baseline]
         if allocation_type == "temporary-reassignment":
             next_entries = [
                 e for e in next_entries if not (e.employee_id == emp_id and e.date == date)
             ]
-        if brand is None or emp is None or date in emp.leaves or date in emp.comp_offs:
-            return {"entries": next_entries, "removed": removed, "added": []}
 
         processes = cls._recovery_processes(
             input_data, emp_id, brand, process_id, allocation_type, date
@@ -587,13 +698,26 @@ class RosterRecoveryEngine:
             is_backup=allocation_type == "temporary-backup",
         )
         next_entries.append(added)
-        return {"entries": next_entries, "removed": removed, "added": [added]}
+        return {
+            "entries": next_entries,
+            "removed": removed,
+            "added": [added],
+            "issues": [],
+            "valid": True,
+        }
 
     @classmethod
     def _simulate(
         cls, input_data: SchedulingInput, entries: List[RosterEntry], directive: Dict[str, object]
     ) -> List[RosterEntry]:
-        return cls._simulate_detailed(input_data, entries, directive)["entries"]  # type: ignore[return-value]
+        simulation = cls._simulate_detailed(input_data, entries, directive)
+        if not simulation["valid"]:
+            messages = " ".join(
+                str(issue["message"])
+                for issue in simulation["issues"]  # type: ignore[union-attr]
+            )
+            raise ValueError(f"Invalid recovery simulation: {messages}")
+        return simulation["entries"]  # type: ignore[return-value]
 
     @classmethod
     def _rejection(
@@ -722,6 +846,29 @@ class RosterRecoveryEngine:
             }
 
             simulation = cls._simulate_detailed(input_data, entries, directive)
+            if not simulation["valid"]:
+                messages = [
+                    str(issue["message"])
+                    for issue in simulation["issues"]  # type: ignore[union-attr]
+                ]
+                simulation_eligibility = RecoveryEligibility(
+                    employee_id=employee_id,
+                    employee_name=emp.name,
+                    eligible=False,
+                    current_assignment=eligibility.current_assignment,
+                    recovery_type=eligibility.recovery_type,
+                    allocation_type=eligibility.allocation_type,
+                    rejection_code="SIMULATION_INVALID",
+                    rejection_reason=" ".join(messages),
+                )
+                rejected.append(
+                    cls._rejection(
+                        input_data, date, brand_id, process_id, employee_id,
+                        simulation_eligibility,
+                        reasons=messages,
+                    )
+                )
+                continue
             simulated = simulation["entries"]  # type: ignore[assignment]
             after = cls._coverage(input_data, simulated, date)
             after_by_key = {(c.brand_id, c.process_id): c for c in after}
@@ -804,6 +951,39 @@ class RosterRecoveryEngine:
                         input_data, date, brand_id, process_id, employee_id,
                         target_eligibility,
                         coverage_impact=impact,
+                    )
+                )
+                continue
+
+            added_entries = simulation["added"]  # type: ignore[assignment]
+            destination_entry = added_entries[0] if added_entries else None
+            incompatible_duty = (
+                _find_incompatible_duty(
+                    input_data, destination_entry.brand_id, destination_entry.processes
+                )
+                if destination_entry is not None
+                else None
+            )
+            if incompatible_duty is not None and destination_entry is not None:
+                incompatible_eligibility = RecoveryEligibility(
+                    employee_id=employee_id,
+                    employee_name=emp.name,
+                    eligible=False,
+                    current_assignment=eligibility.current_assignment,
+                    recovery_type=eligibility.recovery_type,
+                    allocation_type=eligibility.allocation_type,
+                    rejection_code="INCOMPATIBLE_DUTY",
+                    rejection_reason=RECOVERY_REJECTION_TEXT["INCOMPATIBLE_DUTY"],
+                )
+                rejected.append(
+                    cls._rejection(
+                        input_data, date, brand_id, process_id, employee_id,
+                        incompatible_eligibility,
+                        coverage_impact=impact,
+                        reasons=[
+                            f"Cannot cover both {destination_entry.brand_id}-{incompatible_duty[0]} "
+                            f"and {destination_entry.brand_id}-{incompatible_duty[1]} on the same day."
+                        ],
                     )
                 )
                 continue
@@ -1030,6 +1210,14 @@ class RosterRecoveryEngine:
             datetime.date.fromisoformat(str(directive["date"]))
         except ValueError:
             return failure("MALFORMED_DIRECTIVE", "Recovery directive has an invalid date.")
+        source_brand, source_processes = _directive_source(directive)
+        if source_brand is not None and not isinstance(source_brand, str):
+            return failure("MALFORMED_DIRECTIVE", "Recovery directive has malformed source metadata.")
+        if source_processes is not None and (
+            not isinstance(source_processes, list)
+            or not all(isinstance(process, str) for process in source_processes)
+        ):
+            return failure("MALFORMED_DIRECTIVE", "Recovery directive has malformed source metadata.")
 
         emp_id = str(directive["employee_id"])
         date = str(directive["date"])
@@ -1141,6 +1329,26 @@ class RosterRecoveryEngine:
         }
 
         failures: List[Dict[str, object]] = []
+        simulation_failure_codes = {
+            "INVALID_DIRECTIVE": "MALFORMED_DIRECTIVE",
+            "UNKNOWN_EMPLOYEE": "UNKNOWN_EMPLOYEE",
+            "UNKNOWN_TARGET": "UNKNOWN_TARGET",
+            "TARGET_NOT_OPERATING": "TARGET_NOT_OPERATING",
+            "EMPLOYEE_UNAVAILABLE": "ON_LEAVE_OR_COMP_OFF",
+            "DUPLICATE_ASSIGNMENT": "DOUBLE_BOOKED",
+            "ALREADY_ASSIGNED": "DOUBLE_BOOKED",
+            "SOURCE_METADATA_MISMATCH": "SOURCE_METADATA_MISMATCH",
+        }
+        for issue in simulation["issues"]:  # type: ignore[union-attr]
+            failures.append({
+                "code": simulation_failure_codes.get(
+                    str(issue.get("code")), "NEW_HARD_CONSTRAINT"
+                ),
+                "message": issue.get("message"),
+                "employee_id": emp_id,
+                "brand_id": brand_id,
+                "process_id": process_id,
+            })
         if allocations_before != allocations_after:
             failures.append({
                 "code": "PERMANENT_ALLOCATION_MUTATED",
@@ -1269,7 +1477,12 @@ class RosterRecoveryEngine:
         # A successfully repaired target gap disappears from the new-hard list,
         # so any genuinely new hard failure is an independent rejection reason.
         for message in new_hard:
-            failures.append({"code": "NEW_HARD_CONSTRAINT", "message": message})
+            code = (
+                "INCOMPATIBLE_DUTY"
+                if message.startswith("Incompatible duty assignment")
+                else "NEW_HARD_CONSTRAINT"
+            )
+            failures.append({"code": code, "message": message})
 
         coverage_impact: List[Dict[str, object]] = []
         for key, slot in after_lookup.items():

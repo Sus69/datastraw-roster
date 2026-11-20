@@ -52,6 +52,8 @@ export type RecoveryRejectionCode =
   | 'NO_CROSS_POD_AUTHORIZATION'
   | 'REASSIGNMENT_CAUSES_UNDERSTAFFING'
   | 'TARGET_NOT_COVERED'
+  | 'INCOMPATIBLE_DUTY'
+  | 'SIMULATION_INVALID'
   | 'NO_ELIGIBLE_EMPLOYEE';
 
 export interface RecoveryImpact {
@@ -154,6 +156,33 @@ export interface RecoverySimulation {
   entries: RosterEntry[];
   removed: RosterEntry[];
   added: RosterEntry[];
+  issues: RecoverySimulationIssue[];
+  valid: boolean;
+}
+
+export type RecoverySimulationIssueCode =
+  | 'INVALID_DIRECTIVE'
+  | 'UNKNOWN_EMPLOYEE'
+  | 'UNKNOWN_TARGET'
+  | 'TARGET_NOT_OPERATING'
+  | 'EMPLOYEE_UNAVAILABLE'
+  | 'DUPLICATE_ASSIGNMENT'
+  | 'ALREADY_ASSIGNED'
+  | 'SOURCE_METADATA_MISMATCH';
+
+export interface RecoverySimulationIssue {
+  code: RecoverySimulationIssueCode;
+  message: string;
+}
+
+export class RecoverySimulationError extends Error {
+  readonly issues: RecoverySimulationIssue[];
+
+  constructor(issues: RecoverySimulationIssue[]) {
+    super(issues.map((issue) => issue.message).join(' '));
+    this.name = 'RecoverySimulationError';
+    this.issues = issues;
+  }
 }
 
 export interface RecoveryAnalysis {
@@ -182,6 +211,8 @@ const REJECTION_TEXT: Record<RecoveryRejectionCode, string> = {
   REASSIGNMENT_CAUSES_UNDERSTAFFING:
     'Reassignment would cause understaffing elsewhere (cascading coverage failure).',
   TARGET_NOT_COVERED: 'The move would not actually cover the target slot.',
+  INCOMPATIBLE_DUTY: 'The destination processes are explicitly incompatible.',
+  SIMULATION_INVALID: 'The recovery directive could not be simulated safely.',
   NO_ELIGIBLE_EMPLOYEE: 'No eligible employee exists in the permitted pool.',
 };
 
@@ -223,6 +254,34 @@ function crossPodAuthorization(
   return (data.crossPodAuthorizations ?? []).some(
     (c) => c.employeeId === employeeId && c.brandId === brandId && c.processId === processId,
   );
+}
+
+function findIncompatibleDuty(
+  data: RosterData,
+  brandId: string,
+  processes: ProcessId[],
+): [ProcessId, ProcessId] | null {
+  for (let i = 0; i < processes.length; i += 1) {
+    for (let j = i + 1; j < processes.length; j += 1) {
+      const first = processes[i];
+      const second = processes[j];
+      const incompatible = (data.incompatiblePairs ?? []).some((pair) => {
+        const forward =
+          pair.brandId1 === brandId &&
+          pair.processId1 === first &&
+          pair.brandId2 === brandId &&
+          pair.processId2 === second;
+        const reverse =
+          pair.brandId1 === brandId &&
+          pair.processId1 === second &&
+          pair.brandId2 === brandId &&
+          pair.processId2 === first;
+        return forward || reverse;
+      });
+      if (incompatible) return [first, second];
+    }
+  }
+  return null;
 }
 
 function primaryOwned(
@@ -448,9 +507,20 @@ export function computeDayCoverage(
   return coverage;
 }
 
+function isValidIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return (
+    !Number.isNaN(parsed.getTime()) &&
+    parsed.toISOString().slice(0, 10) === value
+  );
+}
+
 /**
  * Apply one recovery instruction to a roster entry list and record exactly
- * which assignments were removed and added. Pure: the baseline is never mutated.
+ * which assignments were removed and added. Pure: the baseline is never
+ * mutated. Invalid directives return structured issues instead of silently
+ * producing a partial simulation.
  */
 export function simulateRecoveryDetailed(
   data: RosterData,
@@ -458,11 +528,111 @@ export function simulateRecoveryDetailed(
   directive: RecoveryAssignment,
 ): RecoverySimulation {
   const baseline = entries.map((e) => ({ ...e, processes: [...e.processes] }));
+  const issues: RecoverySimulationIssue[] = [];
+  const failed = (
+    code: RecoverySimulationIssueCode,
+    message: string,
+  ): RecoverySimulation => ({
+    entries: baseline,
+    removed: [],
+    added: [],
+    issues: [...issues, { code, message }],
+    valid: false,
+  });
+
+  if (
+    !directive ||
+    typeof directive !== 'object' ||
+    typeof directive.date !== 'string' ||
+    !isValidIsoDate(directive.date) ||
+    typeof directive.employeeId !== 'string' ||
+    directive.employeeId.length === 0 ||
+    typeof directive.brandId !== 'string' ||
+    directive.brandId.length === 0 ||
+    typeof directive.processId !== 'string' ||
+    directive.processId.length === 0 ||
+    (directive.type !== 'temporary-backup' &&
+      directive.type !== 'temporary-reassignment') ||
+    (directive.fromBrandId != null && typeof directive.fromBrandId !== 'string') ||
+    (directive.fromProcesses != null &&
+      (!Array.isArray(directive.fromProcesses) ||
+        !directive.fromProcesses.every((process) => typeof process === 'string')))
+  ) {
+    return failed('INVALID_DIRECTIVE', 'Recovery directive is malformed or incomplete.');
+  }
+
+  const current = baseline.filter(
+    (e) => e.employeeId === directive.employeeId && e.date === directive.date,
+  );
+  if (current.length > 1) {
+    return failed(
+      'DUPLICATE_ASSIGNMENT',
+      `${directive.employeeId} already has ${current.length} assignments on ${directive.date}.`,
+    );
+  }
+
+  const brand = data.brands.find((b) => b.id === directive.brandId);
+  const targetProcess = brand?.processes.find(
+    (process) => process.processId === directive.processId,
+  );
+  const emp = data.employees.find((e) => e.id === directive.employeeId);
+  if (!emp) {
+    return failed('UNKNOWN_EMPLOYEE', `Unknown employee ${directive.employeeId}.`);
+  }
+  if (!brand || !targetProcess) {
+    return failed(
+      'UNKNOWN_TARGET',
+      `Unknown destination ${directive.brandId}-${directive.processId}.`,
+    );
+  }
+  if (!isOperatingDay(targetProcess.rule, directive.date, data.holidays)) {
+    return failed(
+      'TARGET_NOT_OPERATING',
+      `${brand.name} ${targetProcess.processId} is not operating on ${directive.date}.`,
+    );
+  }
+  if (isHardUnavailable(emp, directive.date)) {
+    return failed(
+      'EMPLOYEE_UNAVAILABLE',
+      `${emp.name} is unavailable on ${directive.date}.`,
+    );
+  }
+
+  const fromBrand = directive.fromBrandId;
+  const fromProcesses = directive.fromProcesses;
+  const hasSourceMetadata =
+    fromBrand != null || (Array.isArray(fromProcesses) && fromProcesses.length > 0);
+
+  if (directive.type === 'temporary-reassignment') {
+    if (
+      current.length !== 1 ||
+      fromBrand !== current[0].brandId ||
+      !Array.isArray(fromProcesses) ||
+      !sameProcessSet(fromProcesses, current[0].processes)
+    ) {
+      return failed(
+        'SOURCE_METADATA_MISMATCH',
+        'Source metadata does not match the baseline assignment.',
+      );
+    }
+  } else {
+    if (current.length > 0) {
+      return failed(
+        'ALREADY_ASSIGNED',
+        'A temporary backup cannot be added for an employee who is already assigned.',
+      );
+    }
+    if (hasSourceMetadata) {
+      return failed(
+        'SOURCE_METADATA_MISMATCH',
+        'A temporary backup must not claim a source assignment.',
+      );
+    }
+  }
+
   const removed =
     directive.type === 'temporary-reassignment'
-      ? baseline
-          .filter((e) => e.employeeId === directive.employeeId && e.date === directive.date)
-          .map((e) => ({ ...e, processes: [...e.processes] }))
+      ? current.map((e) => ({ ...e, processes: [...e.processes] }))
       : [];
   let next =
     directive.type === 'temporary-reassignment'
@@ -470,12 +640,6 @@ export function simulateRecoveryDetailed(
           (e) => !(e.employeeId === directive.employeeId && e.date === directive.date),
         )
       : baseline;
-
-  const brand = data.brands.find((b) => b.id === directive.brandId);
-  const emp = data.employees.find((e) => e.id === directive.employeeId);
-  if (!brand || !emp || isHardUnavailable(emp, directive.date)) {
-    return { entries: next, removed, added: [] };
-  }
 
   const added: RosterEntry = {
     date: directive.date,
@@ -492,7 +656,7 @@ export function simulateRecoveryDetailed(
     overriddenOff: isWeeklyOff(emp, directive.date),
   };
   next = [...next, added];
-  return { entries: next, removed, added: [added] };
+  return { entries: next, removed, added: [added], issues: [], valid: true };
 }
 
 /** Backwards-compatible helper returning only the simulated entries. */
@@ -501,7 +665,9 @@ export function simulateRecovery(
   entries: RosterEntry[],
   directive: RecoveryAssignment,
 ): RosterEntry[] {
-  return simulateRecoveryDetailed(data, entries, directive).entries;
+  const simulation = simulateRecoveryDetailed(data, entries, directive);
+  if (!simulation.valid) throw new RecoverySimulationError(simulation.issues);
+  return simulation.entries;
 }
 
 function baselineCoverage(data: RosterData, result: RosterResult, date: string): DayCoverage[] {
@@ -661,6 +827,25 @@ export function findRecoveryOptions(
     };
 
     const simulation = simulateRecoveryDetailed(data, result.entries, directive);
+    if (!simulation.valid) {
+      rejected.push(
+        rejection(
+          data,
+          date,
+          brandId,
+          processId,
+          employeeId,
+          {
+            ...eligibility,
+            eligible: false,
+            rejectionCode: 'SIMULATION_INVALID',
+            rejectionReason: simulation.issues.map((issue) => issue.message).join(' '),
+          },
+          { reasons: simulation.issues.map((issue) => issue.message) },
+        ),
+      );
+      continue;
+    }
     const simulated = simulation.entries;
     const afterCoverage = computeDayCoverage(data, simulated, date);
     const afterByKey = coverageByKey(afterCoverage);
@@ -702,6 +887,10 @@ export function findRecoveryOptions(
 
     const targetAfter = afterByKey.get(`${brandId}|${processId}`);
     const targetCovered = targetAfter !== undefined && targetAfter.status === 'covered';
+    const destinationEntry = simulation.added[0];
+    const incompatibleDuty = destinationEntry
+      ? findIncompatibleDuty(data, destinationEntry.brandId, destinationEntry.processes)
+      : null;
 
     if (cascadingFailure) {
       rejected.push(
@@ -723,6 +912,20 @@ export function findRecoveryOptions(
           recoveryType: eligibility.recoveryType,
           allocationType: eligibility.allocationType,
           coverageImpact,
+        }),
+      );
+      continue;
+    }
+    if (incompatibleDuty) {
+      rejected.push(
+        rejection(data, date, brandId, processId, employeeId, { ...eligibility, eligible: false, rejectionCode: 'INCOMPATIBLE_DUTY', rejectionReason: REJECTION_TEXT.INCOMPATIBLE_DUTY }, {
+          recoveryType: eligibility.recoveryType,
+          allocationType: eligibility.allocationType,
+          coverageImpact,
+          reasons: [
+            `Cannot cover both ${destinationEntry?.brandId}-${incompatibleDuty[0]} and ` +
+              `${destinationEntry?.brandId}-${incompatibleDuty[1]} on the same day.`,
+          ],
         }),
       );
       continue;
@@ -887,6 +1090,7 @@ export type RecoveryValidationFailureCode =
   | 'SOURCE_METADATA_MISMATCH'
   | 'DOUBLE_BOOKED'
   | 'DESTINATION_ASSIGNMENT_MISSING'
+  | 'INCOMPATIBLE_DUTY'
   | 'UNRELATED_ENTRY_CHANGED'
   | 'TARGET_UNDERSTAFFED'
   | 'SOURCE_UNDERSTAFFED'
@@ -914,7 +1118,6 @@ function conflictKey(c: Conflict): string {
   return [c.type, c.date, c.brandId ?? '', c.processId ?? '', c.employeeId ?? ''].join('|');
 }
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RECOVERY_TYPES: RecoveryAssignment['type'][] = [
   'temporary-backup',
   'temporary-reassignment',
@@ -935,6 +1138,28 @@ function entrySignature(entry: RosterEntry): string {
     [...entry.processes].sort().join(','),
     entry.overriddenOff ? 'override' : 'normal',
   ].join('|');
+}
+
+function simulationFailureCode(
+  code: RecoverySimulationIssueCode,
+): RecoveryValidationFailureCode {
+  switch (code) {
+    case 'INVALID_DIRECTIVE':
+      return 'MALFORMED_DIRECTIVE';
+    case 'UNKNOWN_EMPLOYEE':
+      return 'UNKNOWN_EMPLOYEE';
+    case 'UNKNOWN_TARGET':
+      return 'UNKNOWN_TARGET';
+    case 'TARGET_NOT_OPERATING':
+      return 'TARGET_NOT_OPERATING';
+    case 'EMPLOYEE_UNAVAILABLE':
+      return 'ON_LEAVE_OR_COMP_OFF';
+    case 'DUPLICATE_ASSIGNMENT':
+    case 'ALREADY_ASSIGNED':
+      return 'DOUBLE_BOOKED';
+    case 'SOURCE_METADATA_MISMATCH':
+      return 'SOURCE_METADATA_MISMATCH';
+  }
 }
 
 function impactEffect(
@@ -979,14 +1204,18 @@ export function validateRecoveryProposal(
   if (
     typeof directive !== 'object' ||
     typeof directive.date !== 'string' ||
-    !ISO_DATE.test(directive.date) ||
+    !isValidIsoDate(directive.date) ||
     typeof directive.employeeId !== 'string' ||
     directive.employeeId.length === 0 ||
     typeof directive.brandId !== 'string' ||
     directive.brandId.length === 0 ||
     typeof directive.processId !== 'string' ||
     directive.processId.length === 0 ||
-    !RECOVERY_TYPES.includes(directive.type)
+    !RECOVERY_TYPES.includes(directive.type) ||
+    (directive.fromBrandId != null && typeof directive.fromBrandId !== 'string') ||
+    (directive.fromProcesses != null &&
+      (!Array.isArray(directive.fromProcesses) ||
+        !directive.fromProcesses.every((process) => typeof process === 'string')))
   ) {
     return fail('MALFORMED_DIRECTIVE', 'Recovery directive is malformed or incomplete.');
   }
@@ -1097,6 +1326,15 @@ export function validateRecoveryProposal(
   const afterByKey = coverageByKey(afterCoverage);
 
   const failures: RecoveryValidationFailure[] = [];
+  for (const issue of simulation.issues) {
+    failures.push({
+      code: simulationFailureCode(issue.code),
+      message: issue.message,
+      employeeId: emp.id,
+      brandId: brand.id,
+      processId: bp.processId,
+    });
+  }
   if (allocationsBefore !== allocationsAfter) {
     failures.push({
       code: 'PERMANENT_ALLOCATION_MUTATED',
@@ -1166,6 +1404,20 @@ export function validateRecoveryProposal(
       employeeId: emp.id,
       brandId: brand.id,
       processId: bp.processId,
+    });
+  }
+  const incompatibleDuty = destinationEntry
+    ? findIncompatibleDuty(data, destinationEntry.brandId, destinationEntry.processes)
+    : null;
+  if (destinationEntry && incompatibleDuty) {
+    failures.push({
+      code: 'INCOMPATIBLE_DUTY',
+      message:
+        `${emp.name} cannot cover both ${destinationEntry.brandId}-${incompatibleDuty[0]} and ` +
+        `${destinationEntry.brandId}-${incompatibleDuty[1]} on ${directive.date}.`,
+      employeeId: emp.id,
+      brandId: destinationEntry.brandId,
+      processId: incompatibleDuty[1],
     });
   }
 

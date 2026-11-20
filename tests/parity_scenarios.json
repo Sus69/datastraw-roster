@@ -1,0 +1,60 @@
+{
+  "brand_semantics_day": {
+    "date": "2026-12-01",
+    "max_brands_per_employee": 1,
+    "note": "Under brand semantics one shift covers every allocated process at that brand."
+  },
+  "recovery_ranking": {
+    "date": "2026-12-01",
+    "brand_id": "b04",
+    "process_id": "CS",
+    "exclude_employee_ids": [
+      "e12",
+      "e15"
+    ],
+    "expected_order": [
+      "e15",
+      "e12",
+      "e13",
+      "e10"
+    ],
+    "expected_keys": {
+      "e15": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "e12": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0
+      ],
+      "e13": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0
+      ],
+      "e10": [
+        1,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0
+      ]
+    }
+  }
+}

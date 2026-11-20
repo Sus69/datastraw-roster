@@ -311,6 +311,30 @@ export default function App() {
     });
   }
 
+  function commitRecoveryScenario(
+    assignment: RecoveryAssignment,
+    absence?: { employeeId: string; date: string },
+  ) {
+    setOverrides((o) => {
+      const extraLeaves = absence
+        ? {
+            ...o.extraLeaves,
+            [absence.employeeId]: (o.extraLeaves[absence.employeeId] ?? []).includes(absence.date)
+              ? o.extraLeaves[absence.employeeId]
+              : [...(o.extraLeaves[absence.employeeId] ?? []), absence.date],
+          }
+        : o.extraLeaves;
+      const existing = (o.recoveryAssignments ?? []).filter(
+        (a) => !(a.date === assignment.date && a.employeeId === assignment.employeeId),
+      );
+      return {
+        ...o,
+        extraLeaves,
+        recoveryAssignments: [...existing, assignment],
+      };
+    });
+  }
+
   function markEmployeeUnavailable(employeeId: string, date: string) {
     setOverrides((o) => {
       const cur = o.extraLeaves[employeeId] ?? [];
@@ -519,7 +543,14 @@ export default function App() {
           />
         )}
 
-        {view === 'recovery' && <RecoveryLab key={`${result.year}-${result.month}`} data={data} result={result} />}
+        {view === 'recovery' && (
+          <RecoveryLab
+            key={`${result.year}-${result.month}`}
+            data={data}
+            result={result}
+            onApplyRepair={commitRecoveryScenario}
+          />
+        )}
 
         {view === 'pods' && <PodsView result={result} data={data} />}
 

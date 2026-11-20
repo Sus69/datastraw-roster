@@ -21,6 +21,7 @@
     "src/data/seed.ts",
     "src/lib/engine.ts",
     "src/lib/recovery.ts",
+    "src/lib/recoveryLab.ts",
     "tests/recovery_ts_smoke.ts"
   ]
 }

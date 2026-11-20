@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { RosterData, RosterResult } from '../../lib/engine';
+import type { RecoveryAssignment } from '../../data/seed';
 import { isHardUnavailable } from '../../lib/engine';
 import type { RecoveryCandidate } from '../../lib/recovery';
+import { recoveryTypeLabel } from '../../lib/recovery';
 import { processLabel } from '../../data/seed';
 import {
   buildAbsenceScenario,
@@ -19,6 +21,10 @@ import { RecoveryImpact } from './RecoveryImpact';
 interface RecoveryLabProps {
   data: RosterData;
   result: RosterResult;
+  onApplyRepair: (
+    assignment: RecoveryAssignment,
+    absence?: { employeeId: string; date: string },
+  ) => void;
 }
 
 type LabMode = 'absence' | 'existing';
@@ -243,6 +249,32 @@ export function RecoveryLab(props: RecoveryLabProps) {
   function selectProposal(employeeIdToSelect: string) {
     setSelectedEmployeeId(employeeIdToSelect);
     if (activeTab === 'roster') setBoardMode('simulated');
+  }
+
+  function applyProposal(candidate: RecoveryCandidate): string | null {
+    if (!context) return 'The scenario is no longer available. Run the simulation again.';
+    const fresh = buildProposalSelection(context.data, context.result, candidate);
+    if (!fresh.validation.valid || !fresh.candidate.directive) {
+      return fresh.validation.reason || 'The proposal failed revalidation and was not applied.';
+    }
+    const absence =
+      context.mode === 'absence' && context.excludeEmployeeId
+        ? { employeeId: context.excludeEmployeeId, date: context.target.date }
+        : undefined;
+    props.onApplyRepair(fresh.candidate.directive, absence);
+    setContext(null);
+    setSelectedEmployeeId(null);
+    setStarted(false);
+    setIsPlaying(false);
+    setPlaybackStep(0);
+    setBoardMode('original');
+    setError(null);
+    setActiveTab('roster');
+    setNotice(
+      `Committed ${candidate.name}’s ${recoveryTypeLabel(candidate.recoveryType)} on ${formatDate(context.target.date)}` +
+        `${absence ? ' together with the scenario leave' : ''}. Permanent allocations were not edited.`,
+    );
+    return null;
   }
 
   function play() {
@@ -541,6 +573,12 @@ export function RecoveryLab(props: RecoveryLabProps) {
             selection={selection}
             selectedEmployeeId={selectedId}
             onSelectProposal={selectProposal}
+            onApply={applyProposal}
+            applyNote={
+              context?.mode === 'absence'
+                ? 'Confirming will commit the scenario leave and the date-specific recovery instruction to the committed roster. Permanent allocations are still not edited.'
+                : 'Confirming will commit only the date-specific recovery instruction to the committed roster. Permanent allocations are still not edited.'
+            }
           />
         </section>
       ) : (

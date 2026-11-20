@@ -17,6 +17,7 @@ from .domain import (
     ProcessId,
     RosterEntry,
     SchedulingInput,
+    ValidationFailure,
     ValidationReport,
 )
 
@@ -58,8 +59,34 @@ class RosterValidator:
         employee_days: Dict[str, Dict[str, str]] | None = None,
     ) -> ValidationReport:
         hard_failures: List[str] = []
+        hard_failure_records: List[ValidationFailure] = []
         warnings: List[str] = []
         informational: List[str] = []
+
+        def fail(
+            code: str,
+            message: str,
+            *,
+            date: str | None = None,
+            brand_id: str | None = None,
+            process_id: str | None = None,
+            employee_id: str | None = None,
+            related_brand_id: str | None = None,
+            related_process_id: str | None = None,
+        ) -> None:
+            hard_failures.append(message)
+            hard_failure_records.append(
+                ValidationFailure(
+                    code=code,
+                    message=message,
+                    date=date,
+                    brand_id=brand_id,
+                    process_id=process_id,
+                    employee_id=employee_id,
+                    related_brand_id=related_brand_id,
+                    related_process_id=related_process_id,
+                )
+            )
 
         holiday_dates = {h.date for h in input_data.holidays}
         emp_map = {e.id: e for e in input_data.employees}
@@ -87,17 +114,32 @@ class RosterValidator:
         for entry in entries:
             emp = emp_map.get(entry.employee_id)
             if not emp:
-                hard_failures.append(f"Unknown employee {entry.employee_id} in roster on {entry.date}.")
+                fail(
+                    "UNKNOWN_EMPLOYEE",
+                    f"Unknown employee {entry.employee_id} in roster on {entry.date}.",
+                    date=entry.date,
+                    employee_id=entry.employee_id,
+                )
                 continue
 
             # Hard Constraint: Approved Leave and Comp-off
             if entry.date in emp.leaves:
-                hard_failures.append(
-                    f"Employee {emp.name} ({emp.id}) is scheduled on {entry.date} during approved leave."
+                fail(
+                    "LEAVE_CLASH",
+                    f"Employee {emp.name} ({emp.id}) is scheduled on {entry.date} during approved leave.",
+                    date=entry.date,
+                    brand_id=entry.brand_id,
+                    process_id=entry.processes[0] if entry.processes else None,
+                    employee_id=emp.id,
                 )
             if entry.date in emp.comp_offs:
-                hard_failures.append(
-                    f"Employee {emp.name} ({emp.id}) is scheduled on {entry.date} during approved comp-off."
+                fail(
+                    "COMP_OFF_CLASH",
+                    f"Employee {emp.name} ({emp.id}) is scheduled on {entry.date} during approved comp-off.",
+                    date=entry.date,
+                    brand_id=entry.brand_id,
+                    process_id=entry.processes[0] if entry.processes else None,
+                    employee_id=emp.id,
                 )
 
             # Record processes
@@ -113,9 +155,14 @@ class RosterValidator:
                 alloc_key = (entry.employee_id, entry.brand_id, proc_id)
                 role = alloc_map.get(alloc_key)
                 if role is None:
-                    hard_failures.append(
+                    fail(
+                        "UNAUTHORIZED_ASSIGNMENT",
                         f"Unauthorized employee assignment: {emp.name} ({emp.id}) assigned to "
-                        f"{entry.brand_id}-{proc_id} on {entry.date} without authorization."
+                        f"{entry.brand_id}-{proc_id} on {entry.date} without authorization.",
+                        date=entry.date,
+                        brand_id=entry.brand_id,
+                        process_id=proc_id,
+                        employee_id=emp.id,
                     )
                 elif role == "backup":
                     warnings.append(
@@ -130,9 +177,14 @@ class RosterValidator:
                     custom_dates = set(bp.custom_operating_dates)
                     operating = is_process_operating(bp.rule, entry.date, holiday_dates, custom_dates)
                     if not operating:
-                        hard_failures.append(
+                        fail(
+                            "CALENDAR_VIOLATION",
                             f"Operating calendar violation: Employee {emp.name} ({emp.id}) assigned to "
-                            f"{entry.brand_id}-{proc_id} on {entry.date}, but process is closed."
+                            f"{entry.brand_id}-{proc_id} on {entry.date}, but process is closed.",
+                            date=entry.date,
+                            brand_id=entry.brand_id,
+                            process_id=proc_id,
+                            employee_id=emp.id,
                         )
 
             # Warning: Preferred weekly off overridden
@@ -155,17 +207,23 @@ class RosterValidator:
                     emp = emp_map.get(emp_id)
                     emp_name = emp.name if emp else emp_id
                     proc_desc = ", ".join(f"{b}-{p}" for b, p in procs)
-                    hard_failures.append(
+                    fail(
+                        "MULTIPLE_DAILY_ASSIGNMENTS",
                         f"Multiple daily assignments: Employee {emp_name} ({emp_id}) assigned to "
-                        f"{len(distinct_brands)} brands on {date} ({proc_desc}). Max allowed is 1 brand."
+                        f"{len(distinct_brands)} brands on {date} ({proc_desc}). Max allowed is 1 brand.",
+                        date=date,
+                        employee_id=emp_id,
                     )
             elif len(procs) > 1:
                 emp = emp_map.get(emp_id)
                 emp_name = emp.name if emp else emp_id
                 proc_desc = ", ".join(f"{b}-{p}" for b, p in procs)
-                hard_failures.append(
+                fail(
+                    "MULTIPLE_DAILY_ASSIGNMENTS",
                     f"Multiple daily assignments: Employee {emp_name} ({emp_id}) assigned to "
-                    f"{len(procs)} brand/process combinations on {date} ({proc_desc}). Max allowed is 1."
+                    f"{len(procs)} brand/process combinations on {date} ({proc_desc}). Max allowed is 1.",
+                    date=date,
+                    employee_id=emp_id,
                 )
 
             # Incompatible duty check
@@ -175,9 +233,16 @@ class RosterValidator:
                     if pair in incompat_pairs:
                         emp = emp_map.get(emp_id)
                         emp_name = emp.name if emp else emp_id
-                        hard_failures.append(
+                        fail(
+                            "INCOMPATIBLE_DUTY",
                             f"Incompatible duty assignment: Employee {emp_name} ({emp_id}) assigned to both "
-                            f"{pair[0][0]}-{pair[0][1]} and {pair[1][0]}-{pair[1][1]} on {date}."
+                            f"{pair[0][0]}-{pair[0][1]} and {pair[1][0]}-{pair[1][1]} on {date}.",
+                            date=date,
+                            brand_id=pair[0][0],
+                            process_id=pair[0][1],
+                            employee_id=emp_id,
+                            related_brand_id=pair[1][0],
+                            related_process_id=pair[1][1],
                         )
 
         # 3. Hard Constraint: Missing Mandatory Operational Coverage
@@ -194,9 +259,13 @@ class RosterValidator:
                         proc_key = (brand.id, bp.process_id, date)
                         scheduled = proc_date_scheduled.get(proc_key, [])
                         if len(scheduled) < bp.min_staff:
-                            hard_failures.append(
+                            fail(
+                                "COVERAGE_SHORTAGE",
                                 f"Missing mandatory operational coverage: Brand {brand.name} ({brand.id}) process "
-                                f"{bp.process_id} on {date} has {len(scheduled)} of {bp.min_staff} required staff scheduled."
+                                f"{bp.process_id} on {date} has {len(scheduled)} of {bp.min_staff} required staff scheduled.",
+                                date=date,
+                                brand_id=brand.id,
+                                process_id=bp.process_id,
                             )
                         else:
                             informational.append(
@@ -224,4 +293,5 @@ class RosterValidator:
             hard_failures=hard_failures,
             warnings=warnings,
             informational=informational,
+            hard_failure_records=hard_failure_records,
         )

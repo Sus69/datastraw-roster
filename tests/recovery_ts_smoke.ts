@@ -7,6 +7,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   ALLOCATIONS,
@@ -14,6 +15,7 @@ import {
   CROSS_POD_AUTHORIZATIONS,
   EMPLOYEES,
   HOLIDAYS,
+  type ProcessId,
   type RecoveryAssignment,
 } from '../src/data/seed';
 import {
@@ -29,6 +31,10 @@ import {
   validateRecoveryProposal,
   type RecoveryCandidate,
 } from '../src/lib/recovery';
+import {
+  buildAbsenceScenario,
+  buildRecoveryTrace,
+} from '../src/lib/recoveryLab';
 
 const DATE = '2026-12-01';
 const data: RosterData = {
@@ -546,6 +552,83 @@ function patched(entries: RosterEntry[]): RosterResult {
   assert.ok(
     analysis.proposals[0].coverageImpact.some((impact) => impact.effect === 'resolved'),
   );
+}
+
+// The Recovery Lab trace is built from the same engine run, not a parallel
+// implementation. An absence scenario must yield the full ten-stage pipeline.
+{
+  const scenario = buildAbsenceScenario(data, result, 'e17', '2026-12-03');
+  assert.ok(scenario.impacted.length > 0, 'expected the absence to create a shortage');
+  const trace = buildRecoveryTrace({
+    data: scenario.data,
+    result: scenario.result,
+    target: scenario.impacted[0],
+    impactedShortages: scenario.impacted,
+    excludeEmployeeId: 'e17',
+  });
+  assert.deepEqual(
+    trace.stages.map((stage) => stage.id),
+    [
+      'detect',
+      'discover',
+      'availability',
+      'authorization',
+      'pod-restrictions',
+      'eligibility',
+      'simulate',
+      'source-impact',
+      'rank',
+      'validate',
+    ],
+  );
+  assert.ok(trace.analysis.proposals.length > 0);
+  for (const proposal of trace.analysis.proposals) {
+    assert.equal(
+      validateRecoveryProposal(scenario.data, scenario.result, proposal).valid,
+      true,
+    );
+  }
+}
+
+// Shared fixture: Python and TypeScript must produce the same lexicographical
+// order and ranking keys for the same seed scenario.
+{
+  const parity = JSON.parse(
+    readFileSync('tests/parity_scenarios.json', 'utf8'),
+  ) as {
+    recovery_ranking: {
+      date: string;
+      brand_id: string;
+      process_id: string;
+      exclude_employee_ids: string[];
+      expected_order: string[];
+      expected_keys: Record<string, number[]>;
+    };
+  };
+  const scenario = parity.recovery_ranking;
+  const entries = result.entries.filter(
+    (e) =>
+      e.date === scenario.date &&
+      !scenario.exclude_employee_ids.includes(e.employeeId),
+  );
+  const analysis = findRecoveryOptions(
+    data,
+    patched(entries),
+    scenario.date,
+    scenario.brand_id,
+    scenario.process_id as ProcessId,
+  );
+  assert.deepEqual(
+    analysis.proposals.map((proposal) => proposal.employeeId),
+    scenario.expected_order,
+  );
+  for (const proposal of analysis.proposals) {
+    assert.deepEqual(
+      proposal.rankingKey,
+      scenario.expected_keys[proposal.employeeId],
+      `ranking key drifted for ${proposal.employeeId}`,
+    );
+  }
 }
 
 console.log('TypeScript recovery smoke tests passed');

@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { processLabel } from '../../data/seed';
 import type { RecoveryLabSelection, RecoveryLabTrace } from '../../lib/recoveryLab';
+import type { RecoveryCandidate } from '../../lib/recovery';
 import { recoveryTypeLabel } from '../../lib/recovery';
 import { RecoveryProposals } from './RecoveryProposals';
 
@@ -7,7 +9,9 @@ interface RecoveryImpactProps {
   trace: RecoveryLabTrace;
   selection: RecoveryLabSelection | null;
   selectedEmployeeId: string | null;
-  onSelectProposal: (employeeId: string) => void;
+  onSelectProposal: (employeeId: string) => void;
+  onApply: (candidate: RecoveryCandidate) => string | null;
+  applyNote: string;
 }
 
 function effectLabel(effect: 'resolved' | 'introduced' | 'changed'): string {
@@ -94,7 +98,10 @@ function MovementStage(props: { selection: RecoveryLabSelection }) {
 }
 
 export function RecoveryImpact(props: RecoveryImpactProps) {
-  const { trace, selection } = props;
+  const { trace, selection } = props;
+  const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+
   if (!selection) {
     const reasons = [...new Set(trace.analysis.rejected.map((candidate) => candidate.rejectionReason).filter(Boolean))];
     return (
@@ -113,7 +120,9 @@ export function RecoveryImpact(props: RecoveryImpactProps) {
     );
   }
 
-  const { candidate, validation } = selection;
+  const { candidate, validation } = selection;
+  const candidateKey = `${candidate.employeeId}|${candidate.targetAssignment.brandId}|${candidate.targetAssignment.processId}`;
+  const confirming = confirmingKey === candidateKey;
   const coverageRows = validation.coverageImpact;
   const sourceRows = candidate.sourceImpact;
   const added = candidate.addedAssignments;
@@ -323,6 +332,50 @@ export function RecoveryImpact(props: RecoveryImpactProps) {
         </section>
       </div>
 
+          {validation.valid && (
+            <div className="recovery-apply-box">
+              {!confirming ? (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setApplyError(null);
+                    setConfirmingKey(candidateKey);
+                  }}
+                >
+                  Review &amp; apply repair
+                </button>
+              ) : (
+                <div className="recovery-apply-confirm">
+                  <p>{props.applyNote}</p>
+                  <div className="recovery-apply-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        const error = props.onApply(candidate);
+                        if (error) setApplyError(error);
+                        else setConfirmingKey(null);
+                      }}
+                    >
+                      Confirm apply
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setConfirmingKey(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {applyError && (
+                <p className="recovery-apply-error" role="alert">{applyError}</p>
+              )}
+            </div>
+          )}
+
       <section className="recovery-impact-panel recovery-impact-ranking">
         <div className="recovery-panel-head">
           <div>

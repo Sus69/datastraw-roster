@@ -39,6 +39,7 @@ export type RecoveryLabStageId =
   | 'discover'
   | 'availability'
   | 'authorization'
+  | 'pod-restrictions'
   | 'eligibility'
   | 'simulate'
   | 'source-impact'
@@ -386,6 +387,19 @@ export function buildRecoveryTrace(input
       [
         { label: 'Rejected', value: String(authFailures), tone: authFailures ? 'warn' : 'ok' },
         { label: 'Passed', value: String(evaluations.length - authFailures) },
+      ],
+    ),
+    stage(
+      'pod-restrictions',
+      'Verify pod restrictions',
+      'Confirm that any move outside the employee’s home pod has an explicit cross-pod authorization.',
+      'completed',
+      countCode(evaluations, ['NO_CROSS_POD_AUTHORIZATION']) === 0
+        ? 'No candidate failed the pod-boundary rule.'
+        : `${countCode(evaluations, ['NO_CROSS_POD_AUTHORIZATION'])} employee(s) rejected for missing cross-pod authorization.`,
+      [
+        { label: 'Cross-pod checked', value: String(evaluations.filter((evaluation) => evaluation.eligibility.crossPodRequired).length) },
+        { label: 'Rejected', value: String(countCode(evaluations, ['NO_CROSS_POD_AUTHORIZATION'])), tone: countCode(evaluations, ['NO_CROSS_POD_AUTHORIZATION']) ? 'warn' : 'ok' },
       ],
     ),
     stage(

@@ -1463,26 +1463,41 @@ class RosterRecoveryEngine:
 
         before_report = RosterValidator.validate(input_data, entries, None)
         after_report = RosterValidator.validate(input_data, simulated, None)
-        before_hard = set(before_report.hard_failures)
-        new_hard = [message for message in after_report.hard_failures if message not in before_hard]
+        before_hard = {
+            failure.identity(): failure
+            for failure in before_report.hard_failure_records
+        }
+        new_hard_records = [
+            failure
+            for failure in after_report.hard_failure_records
+            if failure.identity() not in before_hard
+        ]
         # A temporary same-pod or explicitly authorized recovery assignment is
         # itself the date-specific authorization. The roster validator only
-        # knows permanent allocations, so ignore its authorization warning for
-        # this candidate's destination slot.
-        target_unauthorized = (
-            f"Unauthorized employee assignment: {emp.name} ({emp.id}) "
-            f"assigned to {brand_id}-{process_id}"
-        )
-        new_hard = [message for message in new_hard if not message.startswith(target_unauthorized)]
+        # knows permanent allocations, so ignore its authorization record for
+        # this candidate's destination slot. This is a structured comparison;
+        # no human-readable message is parsed.
+        new_hard_records = [
+            failure
+            for failure in new_hard_records
+            if not (
+                failure.code == "UNAUTHORIZED_ASSIGNMENT"
+                and failure.date == date
+                and failure.brand_id == brand_id
+                and failure.process_id == process_id
+                and failure.employee_id == emp.id
+            )
+        ]
         # A successfully repaired target gap disappears from the new-hard list,
         # so any genuinely new hard failure is an independent rejection reason.
-        for message in new_hard:
+        new_hard = [failure.message for failure in new_hard_records]
+        for failure in new_hard_records:
             code = (
                 "INCOMPATIBLE_DUTY"
-                if message.startswith("Incompatible duty assignment")
+                if failure.code == "INCOMPATIBLE_DUTY"
                 else "NEW_HARD_CONSTRAINT"
             )
-            failures.append({"code": code, "message": message})
+            failures.append({"code": code, "message": failure.message})
 
         coverage_impact: List[Dict[str, object]] = []
         for key, slot in after_lookup.items():
@@ -1526,4 +1541,5 @@ class RosterRecoveryEngine:
             "failures": failures,
             "coverage_impact": coverage_impact,
             "new_conflicts": new_hard,
+            "new_conflict_records": [failure.to_dict() for failure in new_hard_records],
         }

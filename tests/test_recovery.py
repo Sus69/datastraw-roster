@@ -604,3 +604,70 @@ def test_techtrove_december_3_recovery(seed_data):
     else:
         assert "No safe repair" in analysis.explanation
         assert any(p.rejection_code for p in analysis.rejected)
+
+
+def test_validator_emits_structured_hard_failure_identities(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    entries = [
+        RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b05", processes=["CS"]),
+        RosterEntry(date="2026-12-01", employee_id="e15", brand_id="b06", processes=["CS"]),
+    ]
+    report = RosterValidator.validate(input_data, entries)
+    assert report.is_valid is False
+    duplicate = next(
+        record for record in report.hard_failure_records
+        if record.code == "MULTIPLE_DAILY_ASSIGNMENTS"
+    )
+    assert duplicate.date == "2026-12-01"
+    assert duplicate.employee_id == "e15"
+    assert duplicate.brand_id is None
+    assert duplicate.identity() == (
+        "MULTIPLE_DAILY_ASSIGNMENTS",
+        "2026-12-01",
+        "",
+        "",
+        "e15",
+        "",
+        "",
+    )
+    assert len(report.hard_failure_records) == len(report.hard_failures)
+
+
+def test_recovery_ignores_preexisting_unrelated_conflicts_structurally(seed_data):
+    input_data = _brand_day_input(seed_data, "2026-12-01")
+    # Removing e01 leaves an unrelated b01 coverage gap in the baseline. The
+    # structured comparison must not treat that unchanged gap as a new conflict
+    # introduced by the b04-CS repair.
+    entries = [
+        entry for entry in _day_entries(input_data)
+        if entry.employee_id not in ("e01", "e15")
+    ]
+    before = RosterValidator.validate(input_data, entries)
+    assert any(
+        record.code == "COVERAGE_SHORTAGE" and record.brand_id == "b01"
+        for record in before.hard_failure_records
+    )
+
+    analysis = RosterRecoveryEngine.analyze(input_data, entries, "2026-12-01", "b04", "CS")
+    assert analysis.proposals
+    result = RosterRecoveryEngine.validate(input_data, entries, analysis.proposals[0])
+    assert result["valid"] is True
+    assert result["new_conflict_records"] == []
+    assert result["new_conflicts"] == []
+
+
+def test_shared_recovery_ranking_parity_fixture(seed_data):
+    with open(os.path.join(current_dir, "parity_scenarios.json"), "r", encoding="utf-8") as f:
+        parity = json.load(f)["recovery_ranking"]
+    input_data = _brand_day_input(seed_data, parity["date"])
+    entries = [
+        entry for entry in _day_entries(input_data)
+        if entry.employee_id not in parity["exclude_employee_ids"]
+    ]
+    analysis = RosterRecoveryEngine.analyze(
+        input_data, entries, parity["date"], parity["brand_id"], parity["process_id"]
+    )
+    assert [p.employee_id for p in analysis.proposals] == parity["expected_order"]
+    assert {
+        p.employee_id: list(p.ranking_key) for p in analysis.proposals
+    } == parity["expected_keys"]

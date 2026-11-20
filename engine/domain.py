@@ -507,17 +507,61 @@ class SchedulingInput:
         }
 
 
+@dataclass(frozen=True)
+class ValidationFailure:
+    """Structured hard-constraint failure.
+
+    ``identity`` is the stable business-rule key used to compare two validation
+    reports. Human-readable messages remain available for diagnostics, but
+    conflict comparison never depends on them.
+    """
+
+    code: str
+    message: str
+    date: Optional[str] = None
+    brand_id: Optional[str] = None
+    process_id: Optional[str] = None
+    employee_id: Optional[str] = None
+    related_brand_id: Optional[str] = None
+    related_process_id: Optional[str] = None
+
+    def identity(self) -> tuple:
+        return (
+            self.code,
+            self.date or "",
+            self.brand_id or "",
+            self.process_id or "",
+            self.employee_id or "",
+            self.related_brand_id or "",
+            self.related_process_id or "",
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "code": self.code,
+            "message": self.message,
+            "date": self.date,
+            "brand_id": self.brand_id,
+            "process_id": self.process_id,
+            "employee_id": self.employee_id,
+            "related_brand_id": self.related_brand_id,
+            "related_process_id": self.related_process_id,
+        }
+
+
 @dataclass
 class ValidationReport:
     is_valid: bool
     hard_failures: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     informational: List[str] = field(default_factory=list)
+    hard_failure_records: List[ValidationFailure] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "is_valid": self.is_valid,
             "hard_failures": self.hard_failures,
+            "hard_failure_records": [f.to_dict() for f in self.hard_failure_records],
             "warnings": self.warnings,
             "informational": self.informational,
         }

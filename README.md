@@ -5,8 +5,11 @@ support and operational processes for multiple D2C brands. It plans, generates,
 validates and manages monthly rosters across brands, processes and pods, and
 flags coverage conflicts instead of silently producing an invalid roster.
 
-Built with React 19 + TypeScript + Vite. No backend, no network calls — all data
-is local seed data, and any edits are saved in the browser (localStorage).
+Built with React 19 + TypeScript + Vite. The browser app has no external
+backend or network dependency: all seed data ships locally and edits persist in
+the browser (localStorage). An optional Python/CP-SAT HTTP bridge can be started
+on localhost for solver comparison and server-side validation; it is not
+required to run the app.
 
 ## Setup
 
@@ -59,9 +62,12 @@ npm run preview  # serve the production build locally
 - **Recovery Lab:** a dedicated visualizer built on the same recovery engine.
   Mark an employee unavailable or pick an existing shortage, then run the real
   candidate evaluation, simulation, lexicographical ranking and independent
-  validation. The Lab shows the assignment board before/after, the execution
-  pipeline, actual rejection reasons, coverage impact and animated assignment
-  movement without mutating permanent allocations.
+  validation. The Lab shows the assignment board before/after, a ten-stage
+  execution pipeline, actual rejection reasons, coverage impact and animated assignment
+  movement without mutating permanent allocations. Applying a repair is a
+  separate, explicit confirmation: the Lab revalidates the directive first and
+  then commits the date-specific instruction (and, for an absence scenario, the
+  scenario leave) through the normal override path.
 
 ## Assumptions
 
@@ -203,6 +209,7 @@ tests/
   test_scheduling.py Scheduling / CP-SAT pytest suite
   test_recovery.py   Recovery, authorization, simulation, validation and seed scenarios
   recovery_ts_smoke.ts TypeScript parity smoke tests for the same recovery rules
+  parity_scenarios.json Shared Python/TypeScript ranking and brand-semantics contract
 src/
   data/seed.ts      Types + seed data (employees, brands, pods, allocations, holidays)
   lib/engine.ts     Roster generation, validation, CP-SAT bridge, CSV export
@@ -255,10 +262,12 @@ validation and lexicographical ranking rules in `src/lib/recovery.ts` and
 `engine/recovery.py`. Both require explicit `CrossPodAuthorization` entries for
 pod-boundary moves, validate directive source metadata against the baseline,
 and compare new hard failures against the pre-existing baseline rather than
-invalidating a repair for an unrelated old conflict. The Python validator
-exposes hard failures as messages, so recovery maps its known
-incompatible-duty and authorization messages to the same structured decision
-codes used by TypeScript.
+invalidating a repair for an unrelated old conflict. Both validators expose
+structured hard-failure records (`code`, `date`, `brand_id`, `process_id`,
+`employee_id`, related identity fields) and recovery compares those identities,
+never human-readable message strings. Python keeps the legacy message list for
+callers that only render text, while also returning `hard_failure_records` and
+`new_conflict_records` for conflict comparison.
 
 ## Recovery engine architecture
 
@@ -306,7 +315,10 @@ Valid repairs are ordered lexicographically, never by weights:
 8. stable employee-ID tie-break.
 
 Each candidate exposes its `rankingKey` and a `rankingExplanation` so the UI can
-show why it was selected and how alternatives compare.
+show why it was selected and how alternatives compare. Python and TypeScript
+use the same key order; both suites read `tests/parity_scenarios.json` and
+assert the same proposal order and ranking keys, and the TypeScript smoke suite
+also asserts the independent validator accepts every ranked proposal.
 
 ## Commands
 

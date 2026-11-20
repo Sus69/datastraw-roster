@@ -35,10 +35,11 @@ function stageStatus(
   index: number,
   step: number,
   isPlaying: boolean,
+  lastIndex: number,
 ): RecoveryLabStage['status'] {
   if (index < step) return stage.status;
   if (index === step) {
-    if (isPlaying && index < 8) return 'running';
+    if (isPlaying && index < lastIndex) return 'running';
     return stage.status;
   }
   return 'pending';
@@ -83,10 +84,14 @@ export function RecoveryExecution(props: RecoveryExecutionProps) {
           </div>
         </div>
       </div>
+      <p className="recovery-replay-note">
+        This timeline replays the completed engine run. “Running” shows inspection playback,
+        not a live computation against the permanent roster.
+      </p>
 
       <div className="recovery-stage-list">
         {trace.stages.map((stage, index) => {
-          const status = props.started ? stageStatus(stage, index, props.step, props.isPlaying) : 'pending';
+          const status = props.started ? stageStatus(stage, index, props.step, props.isPlaying, lastStage) : 'pending';
           const isOpen = expanded === stage.id;
           return (
             <section key={stage.id} className={`recovery-stage stage-${status} ${isOpen ? 'expanded' : ''}`}>

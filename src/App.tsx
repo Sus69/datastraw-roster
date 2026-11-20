@@ -365,52 +365,53 @@ export default function App() {
           </div>
         </div>
 
-        <div className="month-picker-wrap">
-          <label className="side-label" htmlFor="month-picker">Roster month</label>
-          <select
-            id="month-picker"
-            className="month-select"
-            value={monthLabel}
-            onChange={(e) => {
-              const [y, m] = e.target.value.split('-').map(Number);
-              if (y && m) {
-                setYear(y);
-                setMonth(m);
-              }
-            }}
-          >
-            <option value="2026-11">November 2026</option>
-            <option value="2026-12">December 2026</option>
-            <option value="2027-01">January 2027</option>
-            <option value="2027-02">February 2027</option>
-          </select>
-        </div>
-
-        <nav className="nav">
-          {VIEWS.map((v) => (
-            <button
-              key={v.id}
-              className={view === v.id ? 'nav-btn active' : 'nav-btn'}
-              onClick={() => setView(v.id)}
+        <div className="side-selects-grid">
+          <div className="side-select-wrap">
+            <label className="side-label" htmlFor="month-picker">Roster month</label>
+            <select
+              id="month-picker"
+              className="month-select"
+              value={monthLabel}
+              onChange={(e) => {
+                const [y, m] = e.target.value.split('-').map(Number);
+                if (y && m) {
+                  setYear(y);
+                  setMonth(m);
+                }
+              }}
             >
-              <span>{v.label}</span>
-              {v.id === 'conflicts' && (
-                <div className="nav-badges-wrap">
-                  {result.stats.errors > 0 && (
-                    <span className="nav-badge danger tabular" title={`${result.stats.errors} coverage shortages`}>
-                      {result.stats.errors}
-                    </span>
-                  )}
-                  {result.stats.warnings > 0 && (
-                    <span className="nav-badge warn tabular" title={`${result.stats.warnings} weekly-off overrides`}>
-                      {result.stats.warnings}
-                    </span>
-                  )}
-                </div>
-              )}
-            </button>
-          ))}
-        </nav>
+              <option value="2026-11">November 2026</option>
+              <option value="2026-12">December 2026</option>
+              <option value="2027-01">January 2027</option>
+              <option value="2027-02">February 2027</option>
+            </select>
+          </div>
+
+          <div className="side-select-wrap">
+            <label className="side-label" htmlFor="view-picker">View</label>
+            <select
+              id="view-picker"
+              className="month-select view-select"
+              value={view}
+              onChange={(e) => setView(e.target.value as View)}
+            >
+              {VIEWS.map((v) => {
+                let badgeText = '';
+                if (v.id === 'conflicts') {
+                  const parts: string[] = [];
+                  if (result.stats.errors > 0) parts.push(`${result.stats.errors} errors`);
+                  if (result.stats.warnings > 0) parts.push(`${result.stats.warnings} overrides`);
+                  if (parts.length > 0) badgeText = ` (${parts.join(', ')})`;
+                }
+                return (
+                  <option key={v.id} value={v.id}>
+                    {v.label}{badgeText}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
 
         <div className="side-actions">
           <button className="btn btn-secondary" onClick={exportCsv}>Export roster CSV</button>
@@ -1266,6 +1267,7 @@ function InspectorModal(props: InspectorModalProps) {
   const dt = new Date(`${date}T12:00:00`);
   const dayName = WEEKDAYS[dt.getDay()];
   const formattedDate = `${dayName}, ${dt.getDate()} ${dt.toLocaleString('en-GB', { month: 'short' })} ${dt.getFullYear()}`;
+  const displayDate = `${dt.toLocaleString('en-GB', { month: 'short' })} ${dt.getDate()}`;
 
   const entry = emp ? result.entries.find((e) => e.employeeId === emp.id && e.date === date) : undefined;
   const assignedBrand = entry ? data.brands.find((b) => b.id === entry.brandId) : undefined;
@@ -1283,13 +1285,14 @@ function InspectorModal(props: InspectorModalProps) {
       <div className="inspector-modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <div>
-            <span className="modal-date-badge tabular">{formattedDate}</span>
             <h2 className="modal-title">
-              {emp ? `${emp.name} — Shift detail` : `Coverage inspector: ${formattedDate}`}
+              {emp ? emp.name : 'Shift inspector'}
             </h2>
-            {pod && <span className="muted small">Pod: {pod.name}</span>}
+            <div className="modal-subtitle">
+              {emp ? 'Shift detail' : 'Workforce coverage'} · {formattedDate}{pod ? ` · ${pod.name}` : ''}
+            </div>
           </div>
-          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close modal">
             ×
           </button>
         </div>
@@ -1297,106 +1300,103 @@ function InspectorModal(props: InspectorModalProps) {
         <div className="modal-body">
           {emp && (
             <div className="modal-section">
-              <h3 className="section-title">Assignment status</h3>
+              <h3 className="modal-section-title">Assignment status</h3>
               {entry ? (
-                <div className="assignment-card">
-                  <div className="assign-row">
-                    <span className="assign-label">Assigned brand:</span>
-                    <strong>{assignedBrand?.name ?? entry.brandId}</strong> ({assignedBrand?.category ?? 'General'})
+                <div className="modal-dl">
+                  <div className="modal-dl-row">
+                    <dt className="modal-dt">Assigned brand</dt>
+                    <dd className="modal-dd">
+                      <span className="modal-val-strong">{assignedBrand?.name ?? entry.brandId}</span>
+                      <span className="modal-val-sub">({assignedBrand?.category ?? 'General'})</span>
+                    </dd>
                   </div>
-                  <div className="assign-row">
-                    <span className="assign-label">Assigned process:</span>
-                    <strong>{entry.processes.map((pid) => processLabel(pid)).join(', ')}</strong>
+                  <div className="modal-dl-row">
+                    <dt className="modal-dt">Assigned process</dt>
+                    <dd className="modal-dd">
+                      <span className="modal-val-strong">
+                        {entry.processes.map((pid) => processLabel(pid)).join(', ')}
+                      </span>
+                    </dd>
                   </div>
-                  
-                  {/* Shiftboard visible rule annotation */}
-                  <div className="rule-annotation">
-                    <span className="rule-annotation-label mono">RULE APPLIED:</span>
-                    <span className="rule-annotation-text">
-                      {entry.overriddenOff
-                        ? 'Soft constraint override: Scheduled on preferred weekly off to preserve mandatory client coverage.'
-                        : 'Hard constraint satisfied: Exclusive daily assignment (<= 1 brand/process daily).'}
-                    </span>
+                  <div className="modal-dl-row">
+                    <dt className="modal-dt">Operating rule</dt>
+                    <dd className="modal-dd">
+                      <span className="modal-val-rule">
+                        {entry.overriddenOff
+                          ? 'Soft constraint override: Scheduled on preferred weekly off to preserve mandatory client coverage.'
+                          : 'Hard constraint satisfied: Exclusive daily assignment (1 brand/process daily).'}
+                      </span>
+                    </dd>
                   </div>
 
                   {entry.overriddenOff && (
-                    <div className="alert-box">
-                      <div className="alert-box-head">
-                        <span className="header-mark mark-warn" />
-                        <strong>Weekly off overridden</strong>
-                      </div>
-                      <div className="alert-box-text">
-                        Assigned on preferred weekly off ({dayName}) to satisfy mandatory client coverage. Flagged as soft-constraint warning.
+                    <div className="modal-notice warn">
+                      <span className="modal-chip warn" />
+                      <div>
+                        <strong>Weekly off overridden:</strong> Assigned on preferred weekly off ({dayName}) to satisfy mandatory client coverage. Flagged as soft-constraint warning.
                       </div>
                     </div>
                   )}
                 </div>
               ) : isLeave ? (
-                <div className="alert-box">
-                  <div className="alert-box-head">
-                    <span className="header-mark mark-danger" />
+                <div className="modal-notice danger">
+                  <span className="modal-chip danger" />
+                  <div>
                     <strong>Planned leave (Approved)</strong>
-                  </div>
-                  <div className="alert-box-text">
-                    Hard constraint. The CP-SAT engine strictly prohibits scheduling on approved leave.
-                  </div>
-                  <div className="rule-annotation" style={{ marginTop: 6 }}>
-                    <span className="rule-annotation-label mono">RULE APPLIED:</span>
-                    <span className="rule-annotation-text">Approved planned leave represents absolute employee unavailability.</span>
+                    <div className="modal-notice-sub">
+                      Hard constraint. The CP-SAT engine strictly prohibits scheduling on approved leave.
+                    </div>
                   </div>
                 </div>
               ) : isCompOff ? (
-                <div className="alert-box">
-                  <div className="alert-box-head">
-                    <span className="header-mark mark-danger" />
+                <div className="modal-notice danger">
+                  <span className="modal-chip danger" />
+                  <div>
                     <strong>Comp-off (Approved)</strong>
-                  </div>
-                  <div className="alert-box-text">
-                    Hard constraint. Staff unavailable for operational coverage.
-                  </div>
-                  <div className="rule-annotation" style={{ marginTop: 6 }}>
-                    <span className="rule-annotation-label mono">RULE APPLIED:</span>
-                    <span className="rule-annotation-text">Approved comp-off strictly enforced as hard unavailability constraint.</span>
+                    <div className="modal-notice-sub">
+                      Hard constraint. Staff unavailable for operational coverage.
+                    </div>
                   </div>
                 </div>
               ) : holiday ? (
-                <div className="alert-box">
-                  <div className="alert-box-head">
-                    <span className="header-mark mark-info" />
+                <div className="modal-notice info">
+                  <span className="modal-chip info" />
+                  <div>
                     <strong>Public holiday: {holiday.name}</strong>
-                  </div>
-                  <div className="alert-box-text">
-                    Statutory company closure. Operating rules adapt to holiday policies.
+                    <div className="modal-notice-sub">
+                      Statutory company closure. Operating rules adapt to holiday policies.
+                    </div>
                   </div>
                 </div>
               ) : isOff ? (
-                <div className="alert-box">
-                  <div className="alert-box-head">
-                    <span className="header-mark mark-neutral" />
+                <div className="modal-notice neutral">
+                  <span className="modal-chip neutral" />
+                  <div>
                     <strong>Preferred weekly off</strong>
-                  </div>
-                  <div className="alert-box-text">
-                    Not scheduled. Available as reserve floater if emergency client coverage requires.
+                    <div className="modal-notice-sub">
+                      Not scheduled. Available as reserve floater if emergency client coverage requires.
+                    </div>
                   </div>
                 </div>
               ) : (
-                <div className="alert-box">
-                  <div className="alert-box-head">
-                    <span className="header-mark mark-neutral" />
+                <div className="modal-notice neutral">
+                  <span className="modal-chip neutral" />
+                  <div>
                     <strong>Reserve floater</strong>
-                  </div>
-                  <div className="alert-box-text">
-                    Unscheduled and held in reserve on this date.
+                    <div className="modal-notice-sub">
+                      Unscheduled and held in reserve on this date.
+                    </div>
                   </div>
                 </div>
               )}
 
-              <div className="modal-actions-row">
+              <div className="modal-actions-bar">
                 <button
                   type="button"
-                  className="btn btn-small btn-danger"
+                  className="btn btn-small btn-secondary"
                   onClick={() => props.onMarkUnavailable(emp.id, date)}
                   disabled={isLeave}
+                  style={isLeave ? undefined : { borderColor: 'var(--danger)', color: 'var(--danger)' }}
                 >
                   {isLeave ? 'Already marked on leave' : `Mark ${emp.name.split(' ')[0]} unavailable`}
                 </button>
@@ -1412,68 +1412,80 @@ function InspectorModal(props: InspectorModalProps) {
           )}
 
           <div className="modal-section">
-            <div className="shortage-sec-head">
-              <h3 className="section-title">Operational coverage on {date}</h3>
-              <span className={`status-pill tabular ${shortages.length > 0 ? 'bad' : 'ok'}`}>
-                {shortages.length > 0 ? `${shortages.length} shortage(s)` : 'Fully staffed'}
-              </span>
-            </div>
+            <h3 className="modal-section-title">Coverage on {displayDate}</h3>
 
             {shortages.length === 0 ? (
-              <p className="ok-text small">
-                All operating brand processes meet or exceed minimum staffing requirements on this date.
-              </p>
+              <div className="modal-coverage-status ok">
+                <span className="modal-chip ok" />
+                <div>
+                  <div className="modal-status-label">Fully staffed</div>
+                  <div className="modal-status-desc">
+                    All operating brand processes meet or exceed minimum staffing requirements on this date.
+                  </div>
+                </div>
+              </div>
             ) : (
-              <div className="shortages-list">
-                {shortages.map((s) => {
-                  const b = data.brands.find((x) => x.id === s.brandId);
-                  const candidates = findBackup(data, result, date, s.brandId, s.processId);
-                  return (
-                    <div key={`${s.brandId}-${s.processId}`} className="shortage-item">
-                      <div className="shortage-item-head">
-                        <div>
-                          <strong>{b?.name} — {processLabel(s.processId)}</strong>
-                          <div className="muted small tabular">
-                            Required: {s.required} · Scheduled: {s.scheduled.length}
-                          </div>
-                        </div>
-                        <span className={`chip tabular ${s.status === 'gap' ? 'bad' : 'warn'}`}>
-                          {s.status === 'gap' ? 'Service gap' : 'Understaffed'}
-                        </span>
-                      </div>
+              <div className="modal-shortages-wrap">
+                <div className="modal-coverage-status bad">
+                  <span className="modal-chip danger" />
+                  <div className="modal-status-label">
+                    {shortages.length} coverage shortage{shortages.length !== 1 ? 's' : ''}
+                  </div>
+                </div>
 
-                      <div className="backup-resolution-area">
-                        <span className="backup-rec-title">Candidate backup options:</span>
-                        {candidates.length === 0 ? (
-                          <p className="muted small" style={{ margin: '4px 0 0' }}>
-                            No allocated backup staff or cross-brand floater available in this pod on this date.
-                          </p>
-                        ) : (
-                          <ul className="backup-candidate-list">
-                            {candidates.slice(0, 3).map((cand) => (
-                              <li key={cand.employeeId} className="backup-candidate-item">
-                                <div className="cand-info">
-                                  <strong>{cand.name}</strong>
-                                  <span className="muted small"> — {cand.reason}</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  className="btn btn-small btn-primary"
-                                  onClick={() => {
-                                    props.onAssignBackup(cand.employeeId, s.brandId, s.processId);
-                                    props.onClose();
-                                  }}
-                                >
-                                  + Assign backup cover
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                <div className="modal-shortages-list">
+                  {shortages.map((s) => {
+                    const b = data.brands.find((x) => x.id === s.brandId);
+                    const candidates = findBackup(data, result, date, s.brandId, s.processId);
+                    return (
+                      <div key={`${s.brandId}-${s.processId}`} className="modal-shortage-card">
+                        <div className="modal-shortage-head">
+                          <div>
+                            <strong className="modal-shortage-title">
+                              {b?.name} — {processLabel(s.processId)}
+                            </strong>
+                            <div className="muted small tabular">
+                              Required: {s.required} · Scheduled: {s.scheduled.length}
+                            </div>
+                          </div>
+                          <span className={`chip tabular ${s.status === 'gap' ? 'bad' : 'warn'}`}>
+                            {s.status === 'gap' ? 'Coverage gap' : 'Understaffed'}
+                          </span>
+                        </div>
+
+                        <div className="modal-backup-area">
+                          <span className="modal-backup-head">Candidate backup options:</span>
+                          {candidates.length === 0 ? (
+                            <p className="muted small" style={{ margin: '4px 0 0' }}>
+                              No allocated backup staff or cross-brand floater available in this pod on this date.
+                            </p>
+                          ) : (
+                            <ul className="modal-candidate-list">
+                              {candidates.slice(0, 3).map((cand) => (
+                                <li key={cand.employeeId} className="modal-candidate-item">
+                                  <div className="modal-cand-info">
+                                    <strong>{cand.name}</strong>
+                                    <span className="muted small"> — {cand.reason}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-small btn-primary"
+                                    onClick={() => {
+                                      props.onAssignBackup(cand.employeeId, s.brandId, s.processId);
+                                      props.onClose();
+                                    }}
+                                  >
+                                    Assign backup
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -1492,7 +1504,7 @@ function InspectorModal(props: InspectorModalProps) {
                 props.onJumpToConflicts();
               }}
             >
-              View in conflicts view
+              View in conflicts
             </button>
           )}
         </div>

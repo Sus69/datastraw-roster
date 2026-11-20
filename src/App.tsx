@@ -627,13 +627,13 @@ function AttentionNeededStrip(props: AttentionStripProps) {
           <div className="ledger-row-left">
             <span className="status-sq status-warning" />
             <span className="ledger-row-text">
-              TechTrove Customer Support — 29 days with only Vikram Joshi. Needs 2 staff daily.
+              TechTrove Customer Support — Dec 3 only, 1 of 2 staff. Neha Joshi on leave; Farhan Khan covering.
             </span>
           </div>
           <div className="ledger-row-right">
             <span className="ledger-row-stat warning">1 of 2</span>
-            <button type="button" className="action-link" onClick={props.onJumpToConflicts}>
-              View 29 days
+            <button type="button" className="action-link" onClick={() => props.onInspectDate('2026-12-03')}>
+              Inspect Dec 3
             </button>
           </div>
         </div>

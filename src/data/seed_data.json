@@ -362,6 +362,26 @@
       ],
       "leaves": [],
       "compOffs": []
+    },
+    {
+      "id": "e35",
+      "name": "Isha Rao",
+      "podId": "pod-alpha",
+      "weeklyOff": [
+        6
+      ],
+      "leaves": [],
+      "compOffs": []
+    },
+    {
+      "id": "e36",
+      "name": "Naveen Kumar",
+      "podId": "pod-delta",
+      "weeklyOff": [
+        0
+      ],
+      "leaves": [],
+      "compOffs": []
     }
   ],
   "brands": [
@@ -1028,6 +1048,42 @@
     {
       "employeeId": "e33",
       "brandId": "b10",
+      "processId": "CS",
+      "role": "secondary"
+    },
+    {
+      "employeeId": "e35",
+      "brandId": "b01",
+      "processId": "RET",
+      "role": "secondary"
+    },
+    {
+      "employeeId": "e35",
+      "brandId": "b01",
+      "processId": "CS",
+      "role": "secondary"
+    },
+    {
+      "employeeId": "e35",
+      "brandId": "b02",
+      "processId": "RET",
+      "role": "secondary"
+    },
+    {
+      "employeeId": "e36",
+      "brandId": "b11",
+      "processId": "CS",
+      "role": "secondary"
+    },
+    {
+      "employeeId": "e36",
+      "brandId": "b11",
+      "processId": "RET",
+      "role": "secondary"
+    },
+    {
+      "employeeId": "e36",
+      "brandId": "b04",
       "processId": "CS",
       "role": "secondary"
     }

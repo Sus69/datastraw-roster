@@ -514,7 +514,15 @@ class RosterRecoveryEngine:
             primary_disruption = 1 if is_primary else 0
             weekly_off = 1 if get_weekday(date) in emp.weekly_off else 0
             additional = 0 if target_allocation else 1
-            score = changed * 1000 + primary_disruption * 100 + weekly_off * 10 + additional
+            # Tie-breaker: balance recovery work across the eligible pool.
+            current_workload = sum(1 for entry in entries if entry.employee_id == employee_id)
+            score = (
+                changed * 100_000
+                + primary_disruption * 10_000
+                + weekly_off * 1_000
+                + additional * 100
+                + current_workload
+            )
 
             reasons = []
             if recovery_type == "direct-backup":

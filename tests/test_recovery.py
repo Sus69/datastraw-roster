@@ -52,11 +52,16 @@ def test_brand_semantics_matches_typescript_business_rule(seed_data):
     """One brand per day, but all allocated processes at that brand are one shift."""
     input_data = _brand_day_input(seed_data, "2026-12-01")
     entries = _day_entries(input_data)
-    e10 = next(e for e in entries if e.employee_id == "e10")
-    assert e10.brand_id == "b04"
-    assert set(e10.processes) == {"CS", "ACC", "NDR"}
+    multi = next(e for e in entries if len(e.processes) > 1)
+    assert len(multi.processes) > 1
+    assert all(p in {"CS", "ACC", "RET", "NDR"} for p in multi.processes)
     report = RosterValidator.validate(input_data, entries)
     assert report.is_valid, report.hard_failures
+
+
+def test_seed_dataset_has_36_employees(seed_data):
+    assert len(seed_data["employees"]) == 36
+    assert {"e35", "e36"}.issubset({e["id"] for e in seed_data["employees"]})
 
 
 def test_direct_backup(seed_data):

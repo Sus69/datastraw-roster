@@ -429,7 +429,15 @@ export function findRecoveryOptions(
     const primaryDisruption = isPrimary ? 1 : 0;
     const weeklyOffOverrides = isWeeklyOff(emp, date) ? 1 : 0;
     const additionalStaffing = targetAllocation ? 0 : 1;
-    const score = changedAssignments * 1000 + primaryDisruption * 100 + weeklyOffOverrides * 10 + additionalStaffing;
+    // Final tie-breaker: prefer the least-loaded safe employee so recovery does
+    // not repeatedly pull the same floater into every absence.
+    const currentWorkload = result.entries.filter((e) => e.employeeId === employeeId).length;
+    const score =
+      changedAssignments * 100_000 +
+      primaryDisruption * 10_000 +
+      weeklyOffOverrides * 1_000 +
+      additionalStaffing * 100 +
+      currentWorkload;
 
     const reasons = [
       recoveryType === 'direct-backup'

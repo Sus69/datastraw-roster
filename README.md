@@ -19,13 +19,14 @@ npm run preview  # serve the production build locally
 
 ## What it does
 
-- **Data model:** 34 employees, 12 fictional D2C brands, 4 processes
+- **Data model:** 36 employees, 12 fictional D2C brands, 4 processes
   (Customer Support, Abandoned Cart Conversions, Retention, Non-Delivery
   Report), 4 operational pods each with a pod lead, and resource allocations
   (employee → brand + process, primary or secondary). ~83% of brands (10 of 12)
   have one dedicated employee handling all of that brand's processes; BookBarn
   has 2 employees and WellnessWave has 3. The remaining employees are shared
-  across brands or act as pod floaters (backup cover).
+  across brands or act as pod floaters (backup cover). Two additional recovery
+  specialists (e35, e36) strengthen GlowKart, BookBarn and TechTrove cover.
 - **Working rules per brand/process:** 365-day ops, daily except public
   holidays, or Sundays + public holidays off. Different processes in the same
   brand can have different rules. Minimum staffing is configurable per
@@ -66,10 +67,11 @@ npm run preview  # serve the production build locally
   Planned leaves and comp-offs are **hard** unavailability — the engine never
   schedules someone on leave.
 - The sample dataset is deliberately seeded so December 2026 shows real
-  behaviour: a few genuine coverage gaps (e.g. Aarav Mehta on leave 8–10 Dec
-  leaves GlowKart's Retention uncovered, because that process has no backup;
-  both BookBarn employees on leave 21 Dec leave the brand fully uncovered)
-  and several weekly-off overrides on single-resource brands.
+  behaviour: Aarav Mehta's leave 8–10 Dec is absorbed by recovery specialist
+  e35, both BookBarn employees' leave on 21 Dec is absorbed by e36, and
+  TechTrove's 3 Dec understaffing is covered by the expanded backup pool.
+  Several weekly-off overrides still appear on single-resource brands so the
+  warning path remains visible.
 - Demo video and approach note are part of the submission; this repository
   covers the working application and the written approach below.
 
@@ -189,7 +191,7 @@ engine/
 tests/
   generate_fixture.py Generator and independent validator for datastraw_self_test_fixture.json
   test_scheduling.py Scheduling / CP-SAT pytest suite
-  test_recovery.py   Recovery, reassignment and seed-scenario tests (33 total)
+  test_recovery.py   Recovery, reassignment and seed-scenario tests (34 total)
 src/
   data/seed.ts      Types + seed data (employees, brands, pods, allocations, holidays)
   lib/engine.ts     Roster generation, validation, CP-SAT bridge, CSV export

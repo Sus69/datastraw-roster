@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ALLOCATIONS,
   BRANDS,
+  CROSS_POD_AUTHORIZATIONS,
   EMPLOYEES,
   HOLIDAYS,
   PODS,
@@ -95,6 +96,7 @@ function mergeData(o: Overrides): RosterData {
     brands,
     allocations: [...ALLOCATIONS, ...(o.extraAllocations ?? [])],
     holidays: HOLIDAYS,
+    crossPodAuthorizations: CROSS_POD_AUTHORIZATIONS,
     recoveryAssignments: o.recoveryAssignments ?? [],
   };
 }
@@ -1986,13 +1988,15 @@ function RecoveryOptionsPanel(props: {
                     Impact: {candidate.coverageImpact.length === 0
                       ? 'No coverage regression detected'
                       : candidate.coverageImpact.map((impact) =>
-                          `${impact.brandName} ${impact.processId} ${impact.beforeScheduled}->${impact.afterScheduled}/${impact.required}`,
+                          `${impact.effect}: ${impact.brandName} ${impact.processId} ${impact.beforeScheduled}->${impact.afterScheduled}/${impact.required}`,
                         ).join(' · ')}
                   </div>
                   <div className="muted small">
-                    Changes {candidate.changedAssignments} · primary disruption {candidate.primaryDisruption} ·
-                    weekly-off overrides {candidate.weeklyOffOverrides} · additional staffing {candidate.additionalStaffing}
+                    Changes {candidate.changedAssignments} · source loss {candidate.sourceCoverageLoss} ·
+                    primary disruption {candidate.primaryDisruption} · weekly-off overrides {candidate.weeklyOffOverrides} ·
+                    additional staffing {candidate.additionalStaffing} · workload {candidate.currentWorkload}
                   </div>
+                  <div className="muted small">{candidate.rankingExplanation}</div>
                   <div className="muted small" style={{ color: candidate.hardConstraintsSatisfied ? '#237a4b' : 'var(--danger)' }}>
                     {candidate.hardConstraintsSatisfied ? 'All hard constraints remain satisfied' : 'Hard constraint violation'}
                   </div>

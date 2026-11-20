@@ -76,6 +76,12 @@ export interface Holiday {
  */
 export type RecoveryAssignmentType = 'temporary-backup' | 'temporary-reassignment';
 
+export interface CrossPodAuthorization {
+  employeeId: string;
+  brandId: string;
+  processId: ProcessId;
+}
+
 export interface RecoveryAssignment {
   /** ISO date the instruction applies to. */
   date: string;
@@ -319,6 +325,12 @@ export const ALLOCATIONS: Allocation[] = [
   { employeeId: 'e36', brandId: 'b11', processId: 'CS', role: 'secondary' },
   { employeeId: 'e36', brandId: 'b11', processId: 'RET', role: 'secondary' },
   { employeeId: 'e36', brandId: 'b04', processId: 'CS', role: 'secondary' },
+];
+
+// Explicit pod-boundary permissions. An allocation for a brand/process does
+// not by itself authorize an employee to work outside their home pod.
+export const CROSS_POD_AUTHORIZATIONS: CrossPodAuthorization[] = [
+  { employeeId: 'e36', brandId: 'b04', processId: 'CS' },
 ];
 
 export const HOLIDAYS: Holiday[] = [

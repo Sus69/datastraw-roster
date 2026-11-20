@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "bundler",
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmitOnError": true,
+    "rootDir": ".",
+    "outDir": ".tmp-recovery-ts"
+  },
+  "include": [
+    "src/data/seed.ts",
+    "src/lib/engine.ts",
+    "src/lib/recovery.ts",
+    "tests/recovery_ts_smoke.ts"
+  ]
+}

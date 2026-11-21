@@ -3,7 +3,7 @@
 **Live app:** https://datastraw-roster.vercel.app
 **Repository:** https://github.com/Sus69/datastraw-roster
 **LinkedIn:** https://www.linkedin.com/in/mr-maple
-**Demo video (3–5 min):** link to be added here once recorded — it will show roster generation, different brand schedules, conflict detection, and handling a change.
+**Demo video (3–5 min):** https://youtu.be/GqO7areH7Q0 — it shows roster generation, different brand schedules, conflict detection, and handling a change.
 
 I built this for Datastraw's hiring assignment: a browser app that plans,
 generates, validates and manages monthly rosters for an operations company

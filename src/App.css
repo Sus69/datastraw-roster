@@ -608,6 +608,19 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   background-color: rgba(0, 0, 0, 0.015);
 }
 
+.conflict-row {
+  cursor: pointer;
+}
+
+.conflict-row.selected {
+  background-color: var(--surface-2);
+}
+
+.conflict-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
 .ledger-row-left {
   display: flex;
   align-items: center;
@@ -1713,6 +1726,93 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   font-size: 12px;
   font-weight: 600;
   color: var(--ink);
+}
+
+/* Conflict detail modal: same dialog language, content changes by conflict type. */
+.conflict-modal {
+  max-width: 560px;
+}
+
+.conflict-modal-kicker {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.conflict-modal-kicker .status-sq {
+  margin-right: 4px;
+}
+
+.conflict-modal-suggestion {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.conflict-modal-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.conflict-modal-status {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.conflict-modal-status .status-sq {
+  margin-right: 6px;
+}
+
+.conflict-modal-assignment-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.conflict-modal-assignment {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.conflict-modal-assignment:last-child {
+  border-bottom: none;
+}
+
+.conflict-modal-assignment-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 2px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.conflict-modal-people {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.conflict-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
 }
 
 .modal-backup-area {

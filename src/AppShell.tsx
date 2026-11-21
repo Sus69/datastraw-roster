@@ -208,6 +208,97 @@ function getConflictSentence(c: Conflict, data: RosterData, result?: RosterResul
   return c.message.replace(/\d{4}-\d{2}-\d{2}/g, (m) => formatLedgerDate(m));
 }
 
+const CONFLICT_TYPE_LABELS: Record<Conflict['type'], string> = {
+  COVERAGE_GAP: 'Coverage gap',
+  UNDERSTAFFED: 'Understaffed slot',
+  OFF_OVERRIDDEN: 'Weekly-off override',
+  DOUBLE_BOOKED: 'Double booking',
+  LEAVE_CLASH: 'Leave conflict',
+  INCOMPATIBLE_DUTY: 'Incompatible duty',
+  UNAUTHORIZED_ASSIGNMENT: 'Unauthorized assignment',
+  CALENDAR_VIOLATION: 'Calendar violation',
+  UNKNOWN_EMPLOYEE: 'Unknown employee',
+  WORKLOAD_SHORTAGE: 'Workload shortage',
+  INVALID_INPUT: 'Invalid roster input',
+};
+
+function conflictTypeLabel(c: Conflict): string {
+  return CONFLICT_TYPE_LABELS[c.type] ?? c.type.replaceAll('_', ' ').toLowerCase();
+}
+
+function formatFullDate(iso: string): string {
+  if (!iso) return 'Not recorded';
+  const dt = new Date(`${iso}T12:00:00`);
+  if (Number.isNaN(dt.getTime())) return iso;
+  return `${WEEKDAYS[dt.getDay()]}, ${dt.getDate()} ${dt.toLocaleString('en-GB', { month: 'long' })} ${dt.getFullYear()}`;
+}
+
+type CompOffState = 'scheduled' | 'pending' | 'not-assigned';
+
+interface CompOffArrangement {
+  state: CompOffState;
+  date?: string;
+  reason: string;
+  note?: string;
+}
+
+/**
+ * Read the explicit compensatory-off record for a weekly-off override. A date
+ * is only "scheduled" when the roster also lists it in hard comp-off
+ * availability; nothing is inferred from the employee's remaining non-working
+ * days.
+ */
+function compOffArrangementFor(
+  data: RosterData,
+  employeeId: string | undefined,
+  workedDate: string,
+): CompOffArrangement {
+  const emp = employeeId ? data.employees.find((e) => e.id === employeeId) : undefined;
+  if (!emp || !workedDate) {
+    return {
+      state: 'not-assigned',
+      reason: 'No employee record is available for this conflict.',
+    };
+  }
+
+  const fallbackReason = 'Mandatory client coverage required the employee on their preferred weekly off.';
+  const record = (emp.compOffAssignments ?? []).find((a) => a.workedDate === workedDate);
+  if (!record) {
+    return {
+      state: 'not-assigned',
+      reason: fallbackReason,
+      note: 'No compensatory-off date is recorded for this weekly-off override in the roster.',
+    };
+  }
+
+  const date = record.compOffDate?.trim() || undefined;
+  const reason = record.reason?.trim() || fallbackReason;
+  if (!date) {
+    return {
+      state: 'pending',
+      reason,
+      note: 'A compensatory-off record exists, but no date has been assigned yet.',
+    };
+  }
+
+  const onRoster = emp.compOffs.includes(date);
+  const pending = record.status === 'pending' || !onRoster;
+  return {
+    state: pending ? 'pending' : 'scheduled',
+    date,
+    reason,
+    note: onRoster
+      ? 'This date is recorded in the employee’s comp-off availability in the roster.'
+      : 'The proposed date is not yet recorded in the employee’s comp-off availability.',
+  };
+}
+
+function compOffStatusView(arrangement: CompOffArrangement): { label: string; dot: string } {
+  if (arrangement.state === 'scheduled') return { label: 'Scheduled', dot: 'status-success' };
+  if (arrangement.state === 'pending') return { label: 'Pending', dot: 'status-warning' };
+  return { label: 'Not Assigned', dot: 'status-neutral' };
+}
+
 export default function App() {
   const [year, setYear] = useState(2026);
   const [month, setMonth] = useState(12);
@@ -2247,6 +2338,322 @@ function RecoveryOptionsPanel(props: {
 }
 
 // ---------------------------------------------------------------------------
+// Conflict detail modal
+// ---------------------------------------------------------------------------
+
+function ModalDetailRow(props: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="modal-dl-row">
+      <dt className="modal-dt">{props.label}</dt>
+      <dd className="modal-dd">{props.children}</dd>
+    </div>
+  );
+}
+
+function ConflictDetailModal(props: {
+  conflict: Conflict;
+  data: RosterData;
+  result: RosterResult;
+  onClose: () => void;
+}) {
+  const { conflict: c, data, result, onClose } = props;
+  const emp = c.employeeId ? data.employees.find((e) => e.id === c.employeeId) : undefined;
+  const entry = emp
+    ? result.entries.find((e) => e.employeeId === emp.id && e.date === c.date)
+    : undefined;
+  const brandId = entry?.brandId ?? c.brandId;
+  const brand = brandId ? data.brands.find((b) => b.id === brandId) : undefined;
+  const processes = entry?.processes ?? (c.processId ? [c.processId] : []);
+  const typeLabel = conflictTypeLabel(c);
+  const isError = c.severity === 'error';
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const heading =
+    c.type === 'COVERAGE_GAP' || c.type === 'UNDERSTAFFED'
+      ? `${brand?.name ?? 'Operations'}${c.processId ? ` — ${processLabel(c.processId)}` : ''}`
+      : emp?.name ?? typeLabel;
+
+  const employeeAssignments = c.employeeId
+    ? result.entries.filter((e) => e.employeeId === c.employeeId && e.date === c.date)
+    : [];
+  const coverage = c.brandId && c.processId
+    ? result.coverage.find((row) => row.date === c.date && row.brandId === c.brandId && row.processId === c.processId)
+    : undefined;
+  const counts = coverageCountsFor(result, c);
+  const eligibleIds = c.brandId && c.processId
+    ? [...new Set(data.allocations
+        .filter((a) => a.brandId === c.brandId && a.processId === c.processId)
+        .map((a) => a.employeeId))]
+    : [];
+  const availableCount = c.date
+    ? eligibleIds.filter((id) => {
+        const eligible = data.employees.find((e) => e.id === id);
+        return eligible !== undefined && !isHardUnavailable(eligible, c.date);
+      }).length
+    : 0;
+  const scheduledIds = coverage?.scheduled ?? [];
+
+  const isLeaveClash = c.type === 'LEAVE_CLASH';
+  const leaveKind = emp
+    ? emp.leaves.includes(c.date)
+      ? 'Planned leave'
+      : emp.compOffs.includes(c.date)
+        ? 'Compensatory off'
+        : 'Recorded unavailability'
+    : 'Recorded unavailability';
+  const recordedUnavailability = emp
+    ? leaveKind === 'Compensatory off'
+      ? emp.compOffs
+      : leaveKind === 'Planned leave'
+        ? emp.leaves
+        : []
+    : [];
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="inspector-modal conflict-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="conflict-modal-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-header">
+          <div>
+            <div className="conflict-modal-kicker">
+              <span className={`status-sq ${isError ? 'status-danger' : 'status-warning'}`} />
+              {typeLabel} · {isError ? 'Error' : 'Warning'}
+            </div>
+            <h2 className="modal-title" id="conflict-modal-title">{heading}</h2>
+            <div className="modal-subtitle">
+              {c.date ? formatFullDate(c.date) : 'Roster data validation'}
+            </div>
+          </div>
+          <button type="button" className="modal-close-btn" onClick={onClose} aria-label="Close conflict details">
+            ×
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="modal-section">
+            <h3 className="modal-section-title">Conflict</h3>
+            <div className={`modal-notice ${isError ? 'danger' : 'warn'}`}>
+              <span className={`modal-chip ${isError ? 'danger' : 'warn'}`} />
+              <div>
+                <strong>{typeLabel}</strong>
+                <div className="modal-notice-sub">{getConflictSentence(c, data, result)}</div>
+                {c.suggestion && (
+                  <div className="conflict-modal-suggestion">{c.suggestion}</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {c.type === 'OFF_OVERRIDDEN' && emp && (
+            <>
+              <div className="modal-section">
+                <h3 className="modal-section-title">Employee</h3>
+                <div className="modal-dl">
+                  <ModalDetailRow label="Name"><span className="modal-val-strong">{emp.name}</span></ModalDetailRow>
+                  <ModalDetailRow label="Employee ID">{emp.id}</ModalDetailRow>
+                  <ModalDetailRow label="Assigned brand">{brand?.name ?? brandId ?? 'Not recorded'}</ModalDetailRow>
+                  <ModalDetailRow label="Assigned process">
+                    {processes.length > 0 ? processes.map((pid) => processLabel(pid)).join(', ') : 'Not recorded'}
+                  </ModalDetailRow>
+                  <ModalDetailRow label="Scheduled working date">
+                    {formatFullDate(c.date)}
+                  </ModalDetailRow>
+                  <ModalDetailRow label="Preferred weekly off">
+                    {emp.weeklyOff.length > 0 ? emp.weeklyOff.map((day) => WEEKDAYS[day]).join(', ') : 'Not recorded'}
+                  </ModalDetailRow>
+                </div>
+              </div>
+
+              <div className="modal-section">
+                <h3 className="modal-section-title">Compensatory off arrangement</h3>
+                {(() => {
+                  const arrangement = compOffArrangementFor(data, emp.id, c.date);
+                  const status = compOffStatusView(arrangement);
+                  return (
+                    <>
+                      <div className="modal-notice warn">
+                        <span className="modal-chip warn" />
+                        <div>
+                          <strong>Worked on a preferred weekly off</strong>
+                          <div className="modal-notice-sub">
+                            {formatFullDate(c.date)} · {brand?.name ?? brandId ?? 'Client operations'}
+                            {processes.length > 0 ? ` · ${processes.map((pid) => processLabel(pid)).join(', ')}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="modal-dl">
+                        <ModalDetailRow label="Compensatory off">
+                          {arrangement.date ? formatFullDate(arrangement.date) : 'Not Assigned'}
+                        </ModalDetailRow>
+                        <ModalDetailRow label="Day of week">
+                          {arrangement.date ? weekdayLabel(arrangement.date) : 'Not Assigned'}
+                        </ModalDetailRow>
+                        <ModalDetailRow label="Status">
+                          <span className="conflict-modal-status">
+                            <span className={`status-sq ${status.dot}`} />
+                            {status.label}
+                          </span>
+                        </ModalDetailRow>
+                        <ModalDetailRow label="Reason">{arrangement.reason}</ModalDetailRow>
+                      </div>
+                      {arrangement.note && (
+                        <p className="conflict-modal-note">{arrangement.note}</p>
+                      )}
+                      {arrangement.state === 'not-assigned' && (
+                        <p className="conflict-modal-note">
+                          Opening this view does not create or change a compensatory off. Assign one in the roster to update this status.
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            </>
+          )}
+
+          {c.type === 'DOUBLE_BOOKED' && (
+            <div className="modal-section">
+              <h3 className="modal-section-title">Conflicting assignments</h3>
+              <div className="modal-dl">
+                <ModalDetailRow label="Employee">
+                  <span className="modal-val-strong">{emp?.name ?? c.employeeId ?? 'Unknown employee'}</span>
+                  {emp && <span className="modal-val-sub">{emp.id}</span>}
+                </ModalDetailRow>
+                <ModalDetailRow label="Date">{formatFullDate(c.date)}</ModalDetailRow>
+              </div>
+              {employeeAssignments.length > 0 ? (
+                <div className="conflict-modal-assignment-list">
+                  {employeeAssignments.map((assignment, index) => {
+                    const assignmentBrand = data.brands.find((b) => b.id === assignment.brandId);
+                    return (
+                      <div className="conflict-modal-assignment" key={`${assignment.brandId}-${index}`}>
+                        <div className="conflict-modal-assignment-head">
+                          <strong>{assignmentBrand?.name ?? assignment.brandId}</strong>
+                          <span className="muted small tabular">{formatLedgerDate(assignment.date)}</span>
+                        </div>
+                        <div className="muted small">
+                          {assignment.processes.map((pid) => processLabel(pid)).join(', ') || 'No process recorded'}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="conflict-modal-note">
+                  The validation report flags multiple assignments, but the current roster has no matching shift rows for this employee and date.
+                </p>
+              )}
+            </div>
+          )}
+
+          {(c.type === 'COVERAGE_GAP' || c.type === 'UNDERSTAFFED') && (
+            <div className="modal-section">
+              <h3 className="modal-section-title">Coverage detail</h3>
+              <div className="modal-dl">
+                <ModalDetailRow label="Brand">{brand?.name ?? c.brandId ?? 'Not recorded'}</ModalDetailRow>
+                <ModalDetailRow label="Process">{c.processId ? processLabel(c.processId) : 'Not recorded'}</ModalDetailRow>
+                <ModalDetailRow label="Date">{formatFullDate(c.date)}</ModalDetailRow>
+                <ModalDetailRow label="Required">{counts?.required ?? coverage?.required ?? 1} employee(s)</ModalDetailRow>
+                <ModalDetailRow label="Available">
+                  {availableCount} allocated employee(s) not on leave or comp-off
+                </ModalDetailRow>
+                <ModalDetailRow label="Scheduled">
+                  {scheduledIds.length} of {counts?.required ?? coverage?.required ?? 1} required
+                </ModalDetailRow>
+              </div>
+              <div className="conflict-modal-people">
+                {scheduledIds.length > 0
+                  ? scheduledIds.map((id) => data.employees.find((e) => e.id === id)?.name ?? id).join(', ')
+                  : 'No one is scheduled for this slot.'}
+              </div>
+            </div>
+          )}
+
+          {isLeaveClash && emp && (
+            <div className="modal-section">
+              <h3 className="modal-section-title">Leave detail</h3>
+              <div className="modal-dl">
+                <ModalDetailRow label="Employee">
+                  <span className="modal-val-strong">{emp.name}</span>
+                  <span className="modal-val-sub">{emp.id}</span>
+                </ModalDetailRow>
+                <ModalDetailRow label="Conflict date">{formatFullDate(c.date)}</ModalDetailRow>
+                <ModalDetailRow label="Unavailability">{leaveKind}</ModalDetailRow>
+                <ModalDetailRow label="Recorded dates">
+                  {recordedUnavailability.length > 0
+                    ? recordedUnavailability.map((date) => formatFullDate(date)).join('; ')
+                    : 'No dates recorded'}
+                </ModalDetailRow>
+              </div>
+              <div className="conflict-modal-assignment-list">
+                {employeeAssignments.length > 0 ? employeeAssignments.map((assignment, index) => {
+                  const assignmentBrand = data.brands.find((b) => b.id === assignment.brandId);
+                  return (
+                    <div className="conflict-modal-assignment" key={`${assignment.brandId}-${index}`}>
+                      <div className="conflict-modal-assignment-head">
+                        <strong>{assignmentBrand?.name ?? assignment.brandId}</strong>
+                        <span className="muted small tabular">{formatLedgerDate(assignment.date)}</span>
+                      </div>
+                      <div className="muted small">
+                        {assignment.processes.map((pid) => processLabel(pid)).join(', ') || 'No process recorded'}
+                      </div>
+                    </div>
+                  );
+                }) : (
+                  <p className="conflict-modal-note">
+                    {brand?.name ?? c.brandId ?? 'This assignment'} conflicts with the employee’s recorded unavailability.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {c.type !== 'OFF_OVERRIDDEN'
+            && c.type !== 'DOUBLE_BOOKED'
+            && c.type !== 'COVERAGE_GAP'
+            && c.type !== 'UNDERSTAFFED'
+            && c.type !== 'LEAVE_CLASH'
+            && (emp || brand || c.processId) && (
+              <div className="modal-section">
+                <h3 className="modal-section-title">Affected roster record</h3>
+                <div className="modal-dl">
+                  {emp && (
+                    <ModalDetailRow label="Employee">
+                      <span className="modal-val-strong">{emp.name}</span>
+                      <span className="modal-val-sub">{emp.id}</span>
+                    </ModalDetailRow>
+                  )}
+                  {brand && <ModalDetailRow label="Brand">{brand.name}</ModalDetailRow>}
+                  {c.processId && <ModalDetailRow label="Process">{processLabel(c.processId)}</ModalDetailRow>}
+                  {c.date && <ModalDetailRow label="Date">{formatFullDate(c.date)}</ModalDetailRow>}
+                </div>
+              </div>
+            )}
+        </div>
+
+        <div className="conflict-modal-footer">
+          <button type="button" className="btn btn-small btn-secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Conflicts view
 // ---------------------------------------------------------------------------
 
@@ -2263,6 +2670,10 @@ function ConflictsView(props: {
   onApplyRecovery: (assignment: RecoveryAssignment) => void;
 }) {
   const { conflicts, data } = props;
+  const [selectedConflictId, setSelectedConflictId] = useState<string | null>(null);
+  const selectedConflict = selectedConflictId
+    ? props.allConflicts.find((c) => c.id === selectedConflictId) ?? null
+    : null;
   const errors = props.allConflicts.filter((c) => c.severity === 'error').length;
   const warnings = props.allConflicts.filter((c) => c.severity === 'warning').length;
   const gaps = props.allConflicts.filter((c) => c.type === 'COVERAGE_GAP').length;
@@ -2285,7 +2696,21 @@ function ConflictsView(props: {
           : '8h';
 
     return (
-      <div key={c.id} className="ledger-row">
+      <div
+        key={c.id}
+        className={`ledger-row conflict-row${selectedConflictId === c.id ? ' selected' : ''}`}
+        role="button"
+        tabIndex={0}
+        aria-label={`Open ${conflictTypeLabel(c)} details`}
+        onClick={() => setSelectedConflictId(c.id)}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setSelectedConflictId(c.id);
+          }
+        }}
+      >
         <div className="ledger-row-left">
           <span className={`status-sq ${isError ? 'status-danger' : 'status-warning'}`} />
           <span style={{ fontWeight: 500, color: 'var(--ink)' }}>{isError ? 'Error' : 'Warning'}</span>
@@ -2295,7 +2720,11 @@ function ConflictsView(props: {
         <div className="ledger-row-right">
           <span className={`ledger-row-stat ${isError ? 'danger' : 'warning'}`}>{statText}</span>
           {c.brandId && c.processId && (
-            <div style={{ position: 'relative' }}>
+            <div
+              style={{ position: 'relative' }}
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
               <button
                 type="button"
                 className="action-link"
@@ -2395,6 +2824,15 @@ function ConflictsView(props: {
             </div>
           )}
         </div>
+      )}
+
+      {selectedConflict && (
+        <ConflictDetailModal
+          conflict={selectedConflict}
+          data={props.data}
+          result={props.result}
+          onClose={() => setSelectedConflictId(null)}
+        />
       )}
     </div>
   );

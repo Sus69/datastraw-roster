@@ -46,6 +46,23 @@ export interface Pod {
   leadId: string;
 }
 
+export type CompOffAssignmentStatus = 'scheduled' | 'pending';
+
+/**
+ * Explicit link between a shift worked on a preferred weekly off and the
+ * compensatory day that was actually recorded for it. The comp-off date must
+ * also exist in `Employee.compOffs` before it is treated as scheduled; this is
+ * deliberately not inferred from the next non-working day.
+ */
+export interface CompOffAssignment {
+  /** ISO date of the shift that fell on the employee's preferred weekly off. */
+  workedDate: string;
+  /** ISO date explicitly assigned as the compensatory off, if one exists. */
+  compOffDate?: string;
+  status?: CompOffAssignmentStatus;
+  reason?: string;
+}
+
 export interface Employee {
   id: string;
   name: string;
@@ -57,6 +74,8 @@ export interface Employee {
   leaves: string[];
   /** Compensatory days off (e.g. earned by working a public holiday). Hard unavailability. */
   compOffs: string[];
+  /** Explicit compensatory-off records for shifts worked on a preferred weekly off. */
+  compOffAssignments?: CompOffAssignment[];
 }
 
 export interface Allocation {

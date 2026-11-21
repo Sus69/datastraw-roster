@@ -24,18 +24,12 @@ slots, one per brand, process and day — the app's unit of coverage, shown as
 days, because one employee shift covers every process that person is allocated
 to at that brand. 875 and 585 are different things, not a contradiction.
 
-It's React 19 + TypeScript + Vite. The app has no backend and needs no
-network: the seed data ships with it and edits save in the browser
-(localStorage). There is an optional Python/CP-SAT bridge you can run on
-localhost for solver comparison and server-side validation, but the app works
-without it. One thing to be straight about: the deployed Vercel build is a
-static site with no `api/` backend, so the live app runs the deterministic
-greedy engine in `src/lib/engine.ts` plus its own independent validation pass.
-The app still *tries* `POST /api/schedule` once per generation; with no bridge
-deployed that request fails, the fallback to the local engine is silent apart
-from a console warning, and nothing in the UI reports a CP-SAT status. The
-CP-SAT bridge is local-only (more in "Constraint Programming (CP-SAT) Engine"
-below).
+It's React 19 + TypeScript + Vite. The app has no backend, no Python runtime
+and needs no network: the seed data ships with it and edits save in the
+browser (localStorage). Roster generation, validation and recovery all run
+inside the browser through the single TypeScript engine in `src/lib/engine.ts`.
+There are no API requests, no external solver, and no fallback path to a
+second implementation.
 
 ## Setup
 
@@ -47,9 +41,8 @@ npm run preview  # serve the production build locally
 ```
 
 No environment variables are needed to run the app. `.env.example` says so
-plainly — all the data is local seed data in `src/data/seed.ts` and there is
-no backend. The only optional local service is the CP-SAT bridge
-(`npm run engine:server`, port 8000; see Commands below).
+plainly — all the data is local seed data in `src/data/seed.ts`, scheduling is
+pure TypeScript, and there is no backend or Python service to start.
 
 ## What it does
 
@@ -125,7 +118,7 @@ no backend. The only optional local service is the CP-SAT bridge
 | C. Monthly roster generation (§3C) | Month picker (default December 2026) in `src/AppShell.tsx`, generation in `src/lib/engine.ts`; most-constrained slots first; shows who works, who is off, and per-day coverage |
 | D. Conflict detection & validation (§3D) | `validateRoster` independent pass + Conflicts view: gaps, understaffing, double-booking, leave clashes (errors) vs weekly-off overrides (warnings); mandatory coverage beats a preferred weekly off |
 | E. Roster views & editing (§3E) | Company, pod, brand, process and employee views; edits re-generate and re-validate the whole month immediately |
-| F. Handling changes (§3F) | "Simulate a change" on Overview (e.g. Aarav Mehta unavailable 14 Dec) + constraint-aware recovery engine (`src/lib/recovery.ts`, `engine/recovery.py`) and Recovery Lab; repairs are date-specific and never edit permanent allocations |
+| F. Handling changes (§3F) | "Simulate a change" on Overview (e.g. Aarav Mehta unavailable 14 Dec) + constraint-aware recovery engine (`src/lib/recovery.ts`) and Recovery Lab; repairs are date-specific and never edit permanent allocations |
 
 ## Assumptions
 
@@ -259,8 +252,8 @@ employees without touching code. I'd add pagination/virtualisation to the grid
 roster stays a draft until a manager publishes it. Fairness is already handled
 by the workload tally in the generator and a workload key in recovery ranking
 (see Q8), so at double the size I'd keep that and put the effort into growing
-the existing automated Python and TypeScript recovery tests into a
-property-based scheduling suite, rather than building a new optimiser first.
+the existing automated scheduling and recovery tests into a property-based
+suite, rather than building a new optimiser first.
 
 ### 8. If you had one additional week to work on this, what would you improve first?
 
@@ -282,24 +275,13 @@ view.
 ## Project structure
 
 ```
-engine/
-  domain.py         Domain dataclasses, normalized schemas, and serialization
-  model.py          Core CP-SAT mathematical formulation and solver (Google OR-Tools)
-  validator.py      Independent hard-constraint verifier
-  conflict_analyzer.py Diagnostic slack model and infeasibility root-cause analyzer
-  reoptimizer.py    Dynamic re-optimization engine (minimizing assignment churn)
-  recovery.py       Constraint-aware roster recovery / safe reassignment engine
-  cli.py            CLI interface (solve, validate, reoptimize, recover)
-  server.py         Lightweight HTTP API bridge server
 tests/
-  generate_fixture.py Generator and independent validator for datastraw_self_test_fixture.json
-  test_scheduling.py Scheduling / CP-SAT pytest suite
-  test_recovery.py   Recovery, authorization, simulation, validation and seed scenarios
-  recovery_ts_smoke.ts TypeScript parity smoke tests for the same recovery rules
-  parity_scenarios.json Shared Python/TypeScript ranking and brand-semantics contract
+  engine_ts_smoke.ts    Generation, validation, calendars, incompatible duties and input tests
+  recovery_ts_smoke.ts  Recovery discovery, simulation, ranking and validation tests
+  parity_scenarios.json Stable ranking/scenario expectations for the recovery suite
 src/
   data/seed.ts      Types + seed data (employees, brands, pods, allocations, holidays)
-  lib/engine.ts     Roster generation, validation, CP-SAT bridge, CSV export
+  lib/engine.ts     Roster generation, independent validation, workload check, CSV export
   lib/recovery.ts   Recovery candidate discovery, simulation, ranking and validation
   lib/recoveryLab.ts Recovery Lab scenario/trace integration over the same engine
   components/recovery/ Recovery Lab roster board, execution timeline and impact views
@@ -308,68 +290,90 @@ src/
   App.css           Plain CSS, dark sidebar + light content
 ```
 
-## Constraint Programming (CP-SAT) Engine
+## TypeScript scheduling engine
 
-The scheduling model is formulated as an exact Constraint Programming problem solved with Google OR-Tools CP-SAT:
+The only scheduling engine is `src/lib/engine.ts`. It is a pure, deterministic
+generator: no network, no external solver, no second implementation. It takes
+the full roster model and a year/month, generates the roster, then runs an
+independent validation pass over the result.
 
-- Decision Variables:
-  - $x_{eqd} \in \{0, 1\}$: Employee $e$ assigned to process $q$ on day $d$.
-  - $w_{ed} \in \{0, 1\}$: Employee working status indicator.
-  - $o_{ed} \in \{0, 1\}$: Weekly-off allocation indicator.
-  - $n_{ed} \in \{0, 1\}$: Available but unassigned indicator.
-  - $u_{ed} \in \{0, 1\}$: Fixed unavailability indicator (approved leaves, comp-offs).
-- Hard Constraints:
-  - State partition: $w_{ed} + o_{ed} + n_{ed} = 1 - u_{ed}$
-  - Assignment eligibility: $x_{eqd} \le P_{eq} + B_{eq}$
-  - Operating calendar: $x_{eqd} \le G_{qd}$
-  - Availability: $x_{eqd} \le 1 - u_{ed}$
-  - Working consistency: $x_{eqd} \le w_{ed}$ and $w_{ed} \le \sum_q x_{eqd}$
-  - Weekly-off exclusivity: $w_{ed} + o_{ed} \le 1$
-  - Weekly-off entitlement: $L_{ew}^{min} \le \sum_{d \in D_w} o_{ed} \le L_{ew}^{max}$
-  - Minimum coverage: $\sum_e x_{eqd} \ge M_{qd}$
-  - Incompatible assignments: $x_{eqd} + x_{erd} \le 1$ for all explicitly incompatible pairs $(q, r)$
-- Objectives:
-  - Re-optimization: $\min \sum_{e,q,d} \Delta_{eqd}$ where $\Delta_{eqd} \ge |x_{eqd} - x^0_{eqd}|$
-  - Primary resource preference over backup
-  - Preferred weekly off satisfaction
-  - Minimization of excess staffing
-- Diagnostic Slack Model:
-  When hard constraints are infeasible, the engine minimizes diagnostic shortage slack $\min \sum s_{qd}$ to isolate exact dates, processes, and shortages without presenting invalid rosters.
+### Generation
 
-### TypeScript / Python reconciliation
+1. **Validate input.** Invalid months, unknown allocations, duplicate ids,
+   malformed dates and invalid minimum staffing return explicit
+   `INVALID_INPUT` conflicts instead of throwing or producing a broken roster.
+2. **Work day by day.** For each date, list the brand/process slots whose own
+   calendar rule operates that day (`ALL_YEAR`, `EXCEPT_HOLIDAYS`,
+   `NO_SUN_HOLIDAYS`, or explicit `CUSTOM` dates).
+3. **Apply date-specific recovery instructions.** A temporary backup adds one
+   process for that employee/date; a temporary reassignment pins the employee to
+   the destination brand for that date. Permanent allocations are never edited.
+4. **Order brands most-constrained first.** Fewest available people relative to
+   demand first, with a name tie-break, so a shared employee is spent where they
+   are needed most.
+5. **Pick a working set per brand.** Candidates are filtered for hard
+   unavailability (leave/comp-off), existing assignments that day, and
+   incompatible duties. Ranking prefers people who are not on their preferred
+   weekly off, then primaries, then the least-loaded person and the person with
+   fewer overrides, then a stable name tie-break.
+6. **One brand, all allocated processes.** A picked employee covers every
+   operating process they are allocated to at that brand in one working day.
+   Primaries are scheduled for their own processes; secondaries are backup-only
+   and are picked to meet minimum staffing or cover an absence.
+7. **Record coverage and validate independently.** Coverage is recomputed from
+   the produced entries, then `validateRoster()` re-checks the hard rules
+   without trusting the generator.
 
-The browser engine uses the business rule **one brand per employee per day,
-covering every allocated process at that brand**. The legacy CP-SAT model was
-process-granular (one brand/process per day). `SchedulingInput.assignment_semantics`
-now makes this explicit: `"process"` preserves the existing CP-SAT test contract,
-while `"brand"` applies the UI business rule. The CLI exposes it as
-`--semantics brand`; omit the flag and you get the legacy `process` contract the
-test suite is written against.
+### Preserved business constraints
 
-The distinction is not cosmetic. Run against the December seed data, the legacy
-`process` semantics cannot cover the month — one employee may then hold only one
-brand/process per day — so it reports shortages. With `--semantics brand` the
-same model solves to `OPTIMAL` with 875 of 875 coverage slots covered, 0 gaps,
-0 understaffed slots and the same 15 weekly-off overrides the browser engine
-produces. What the two engines do not share is the exact assignment: the greedy
-roster is deterministic, while CP-SAT runs four search workers and can return a
-different (equally `OPTIMAL`) assignment from run to run — sometimes leaving a
-floater unassigned, which is why its totals move between 35 and 36 people
-working, while the browser engine's December roster uses all 36.
+- Planned leave and comp-off are hard unavailability: nobody is scheduled on
+  either.
+- An employee works for at most one brand per day. Multiple processes at that
+  brand are one shift, not separate shifts.
+- A process only operates on days allowed by its own calendar rule, including
+  explicit custom dates.
+- Every operating brand/process must meet its `minStaff` requirement. If it
+  cannot, the result contains a `COVERAGE_GAP` or `UNDERSTAFFED` hard error.
+- Explicitly incompatible brand/process duties cannot be worked together in one
+  day. Candidates with an incompatible destination process set are not selected,
+  and the independent validator still catches a manually supplied violation.
+- Allocations authorize normal work; same-pod recovery can use process
+  experience; cross-pod moves require explicit `CrossPodAuthorization`.
+- Preferred weekly offs are soft: mandatory coverage wins, but the shift is
+  reported as an `OFF_OVERRIDDEN` warning.
+- Fairness is deterministic: the running month-to-date workload and override
+  count break ties, so the same floater is not pulled into every gap.
 
-Recovery uses the same eligibility, immutable simulation, independent
-validation and lexicographical ranking rules in `src/lib/recovery.ts` and
-`engine/recovery.py`. Both require explicit `CrossPodAuthorization` entries for
-pod-boundary moves, validate directive source metadata against the baseline,
-and compare new hard failures against the pre-existing baseline rather than
-invalidating a repair for an unrelated old conflict. Both validators expose
-structured hard-failure records (`code`, `date`, `brand_id`, `process_id`,
-`employee_id`, related identity fields) and recovery compares those identities,
-never human-readable message strings. Python keeps the legacy message list for
-callers that only render text, while also returning `hard_failure_records` and
-`new_conflict_records` for conflict comparison.
+### Optional working-hour policy
+
+`RosterData.workloadPolicy` supports daily process demand and per-employee
+capacity. When enabled, `validateRoster()` runs a deterministic max-flow check
+over the scheduled employees and reports any unmet demand as a
+`WORKLOAD_SHORTAGE` hard error. The policy is optional and disabled in the
+shipped seed data. The greedy generator does not use working-hour demand as a
+primary selection objective, so if a roster can satisfy coverage but not the
+hour demand it reports the shortage rather than silently pretending the policy
+passed.
+
+### Independent validation
+
+`validateRoster()` recomputes hard constraints from the entries and coverage:
+unknown employees/brands/processes, closed-calendar assignments, unauthorized
+assignments, leave/comp-off clashes, double-booking, incompatible duties,
+coverage gaps/understaffing, and optional workload shortages. Warnings are kept
+separate from errors, and every conflict carries a plain explanation and a
+suggested next action.
 
 ## Recovery engine architecture
+
+Recovery uses the same eligibility, immutable simulation, independent
+validation and lexicographical ranking rules as generation in
+`src/lib/recovery.ts`. It requires explicit `CrossPodAuthorization` entries for
+pod-boundary moves, validates directive source metadata against the baseline,
+and compares new hard failures against the pre-existing baseline rather than
+invalidating a repair for an unrelated old conflict. Recovery compares
+structured conflict identities (`type`, `date`, brand, process and employee),
+never human-readable message strings.
 
 ### Authorization policy
 
@@ -400,21 +404,20 @@ neither edits `data.allocations`.
 
 ### Simulation and validation
 
-`simulateRecoveryDetailed()` / `_simulate_detailed()` clone the baseline roster,
-reject malformed directives, duplicate baseline assignments, unavailable
-employees, closed/missing destination processes and forged source metadata, and
-record exactly which assignments are removed and added. All preconditions,
-including destination construction, run before any simulated removal is
-planned. A failed simulation returns the untouched baseline with empty
-`removed` and `added` lists. Coverage is recomputed for the destination, the
-source brand/processes and every other affected slot.
+`simulateRecoveryDetailed()` clones the baseline roster, rejects malformed
+directives, duplicate baseline assignments, unavailable employees,
+closed/missing destination processes and forged source metadata, and records
+exactly which assignments are removed and added. All preconditions, including
+destination construction, run before any simulated removal is planned. A failed
+simulation returns the untouched baseline with empty `removed` and `added`
+lists. Coverage is recomputed for the destination, the source brand/processes
+and every other affected slot.
 
-`validateRecoveryProposal()` / `RosterRecoveryEngine.validate()` do not trust
-candidate flags, scores or reasons. They reconstruct the directive against the
-baseline, re-check authorization and availability, verify the destination entry,
-reject new source understaffing and new hard conflicts, allow unrelated
-pre-existing conflicts, and prove that permanent allocations and unrelated
-roster entries are unchanged.
+`validateRecoveryProposal()` does not trust candidate flags, scores or reasons.
+It reconstructs the directive against the baseline, re-checks authorization and
+availability, verifies the destination entry, rejects new source understaffing
+and new hard conflicts, allows unrelated pre-existing conflicts, and proves
+that permanent allocations and unrelated roster entries are unchanged.
 
 ### Ranking
 
@@ -430,47 +433,32 @@ Valid repairs are ordered lexicographically, never by weights:
 8. stable employee-ID tie-break.
 
 Each candidate exposes its `rankingKey` and a `rankingExplanation` so the UI can
-show why it was selected and how alternatives compare. Python and TypeScript
-use the same key order; both suites read `tests/parity_scenarios.json` and
-assert the same proposal order and ranking keys, and the TypeScript smoke suite
-also asserts the independent validator accepts every ranked proposal.
+show why it was selected and how alternatives compare. The recovery smoke suite
+reads `tests/parity_scenarios.json` to lock the proposal order and ranking keys,
+and asserts the independent validator accepts every ranked proposal.
 
 ## Commands
 
 ```bash
-# Run complete test suite (Python scheduling/recovery + TypeScript recovery parity)
+# Type-check, build the scheduling tests and run the full suite
 npm test
 
-# Run just the Python recovery/scheduling suite
-python -m pytest tests -q
-
-# Run just the TypeScript recovery parity smoke tests
+# Run just the TypeScript engine/recovery tests
 npm run test:ts
 
-# Run CP-SAT solver via CLI on the bundled self-test fixture
-npm run engine:solve -- --input datastraw_self_test_fixture.json --output roster.json
+# Start the app
+npm run dev
 
-# Validate that roster against hard constraints
-npm run engine:validate -- --input datastraw_self_test_fixture.json --roster roster.json
+# Type-check and build the production bundle
+npm run build
 
-# Solve the app's own December seed data with the browser business rule, then
-# validate the roster the solver produced
-npm run engine:solve -- --input src/data/seed_data.json --semantics brand --output seed-roster.json
-npm run engine:validate -- --input src/data/seed_data.json --roster seed-roster.json --semantics brand
-
-# Rank safe repairs for one brand/process slot in that seed roster
-python -m engine.cli recover --input src/data/seed_data.json --roster seed-roster.json --date 2026-12-03 --brand b04 --process CS --semantics brand
-
-# Re-optimize schedule after operational disruption
-npm run engine:reoptimize -- --input datastraw_self_test_fixture.json --roster roster.json --emp E01 --date 2026-11-25
-
-# Start local CP-SAT API bridge server
-npm run engine:server
+# Lint
+npm run lint
 ```
 
-Omit `--semantics brand` and every command keeps the legacy `process`
-granularity that the pytest suite is written against — that is why the flag is
-explicit rather than a changed default.
+`npm test` runs both `tests/engine_ts_smoke.ts` and
+`tests/recovery_ts_smoke.ts`. No Python runtime, virtual environment, external
+solver or local API server is required.
 
 ## Submission checklist (from the brief, §7)
 

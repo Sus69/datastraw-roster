@@ -23,14 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
 screenshots/
-
-
 
 # Local compile-check output
 .tmp-*/

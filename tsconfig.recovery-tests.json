@@ -22,6 +22,7 @@
     "src/lib/engine.ts",
     "src/lib/recovery.ts",
     "src/lib/recoveryLab.ts",
+    "tests/engine_ts_smoke.ts",
     "tests/recovery_ts_smoke.ts"
   ]
 }

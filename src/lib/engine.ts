@@ -45,6 +45,28 @@ import {
 } from '../data/seed';
 import { findSafeBackups } from './recovery';
 
+/** Optional working-hour capacity policy. Disabled unless explicitly enabled. */
+export interface WorkloadRequirement {
+  brandId: string;
+  processId: ProcessId;
+  date: string;
+  demandHours: number;
+}
+
+export interface EmployeeCapacity {
+  employeeId: string;
+  date: string;
+  maxDailyHours: number;
+  /** Keys may be `brandId:processId` or a bare process id. */
+  processCapacityHours: Record<string, number>;
+}
+
+export interface WorkloadPolicy {
+  enabled: boolean;
+  demands: WorkloadRequirement[];
+  capacities: EmployeeCapacity[];
+}
+
 export interface RosterData {
   employees: Employee[];
   brands: Brand[];
@@ -62,6 +84,8 @@ export interface RosterData {
   crossPodAuthorizations?: CrossPodAuthorization[];
   /** Explicit brand/process pairs that cannot be worked in the same day. */
   incompatiblePairs?: IncompatiblePair[];
+  /** Optional daily demand/capacity limits, checked after generation. */
+  workloadPolicy?: WorkloadPolicy;
 }
 
 export interface RosterEntry {
@@ -92,7 +116,13 @@ export type ConflictType =
   | 'UNDERSTAFFED'
   | 'OFF_OVERRIDDEN'
   | 'DOUBLE_BOOKED'
-  | 'LEAVE_CLASH';
+  | 'LEAVE_CLASH'
+  | 'INCOMPATIBLE_DUTY'
+  | 'UNAUTHORIZED_ASSIGNMENT'
+  | 'CALENDAR_VIOLATION'
+  | 'UNKNOWN_EMPLOYEE'
+  | 'WORKLOAD_SHORTAGE'
+  | 'INVALID_INPUT';
 
 export interface Conflict {
   id: string;
@@ -125,26 +155,48 @@ export interface RosterResult {
   coverage: DayCoverage[];
   conflicts: Conflict[];
   stats: RosterStats;
-  solverStatus?: 'OPTIMAL' | 'FEASIBLE' | 'INFEASIBLE' | 'UNKNOWN' | 'MODEL_INVALID';
-  diagnosticExplanations?: string[];
-  reoptimizationDelta?: {
-    totalChanges: number;
-    added: Array<{ employee_id: string; brand_id: string; process_id: string; date: string }>;
-    removed: Array<{ employee_id: string; brand_id: string; process_id: string; date: string }>;
-    stabilityRatio: number;
-  };
 }
 
 // ---------------------------------------------------------------------------
 // Rule helpers
 // ---------------------------------------------------------------------------
 
-export function isOperatingDay(rule: OperatingRule, date: string, holidays: Holiday[]): boolean {
+export function isOperatingDay(
+  rule: OperatingRule,
+  date: string,
+  holidays: Holiday[],
+  customOperatingDates?: readonly string[],
+): boolean {
+  if (rule === 'CUSTOM') return (customOperatingDates ?? []).includes(date);
   const holiday = holidays.some((h) => h.date === date);
   if (rule === 'ALL_YEAR') return true;
   if (rule === 'EXCEPT_HOLIDAYS') return !holiday;
   // NO_SUN_HOLIDAYS
   return !holiday && dayOfWeek(date) !== 0;
+}
+
+function hasIncompatibleDuty(
+  data: RosterData,
+  brandId: string,
+  processes: readonly ProcessId[],
+): [ProcessId, ProcessId] | null {
+  for (let i = 0; i < processes.length; i += 1) {
+    for (let j = i + 1; j < processes.length; j += 1) {
+      const first = processes[i];
+      const second = processes[j];
+      const incompatible = (data.incompatiblePairs ?? []).some((pair) => {
+        const forward =
+          pair.brandId1 === brandId && pair.processId1 === first &&
+          pair.brandId2 === brandId && pair.processId2 === second;
+        const reverse =
+          pair.brandId1 === brandId && pair.processId1 === second &&
+          pair.brandId2 === brandId && pair.processId2 === first;
+        return forward || reverse;
+      });
+      if (incompatible) return [first, second];
+    }
+  }
+  return null;
 }
 
 export function isHardUnavailable(emp: Employee, date: string): boolean {
@@ -168,6 +220,22 @@ function allocatedTo(data: RosterData, employeeId: string, brandId: string, proc
   );
 }
 
+function authorizedFor(data: RosterData, employeeId: string, brandId: string, processId: ProcessId): boolean {
+  if (allocatedTo(data, employeeId, brandId, processId)) return true;
+  const emp = data.employees.find((e) => e.id === employeeId);
+  const brand = data.brands.find((b) => b.id === brandId);
+  if (!emp || !brand) return false;
+  // Explicit pod-boundary authorization covers a cross-pod move.
+  if ((data.crossPodAuthorizations ?? []).some(
+    (c) => c.employeeId === employeeId && c.brandId === brandId && c.processId === processId,
+  )) return true;
+  // Same-pod recovery may use process experience even when the employee is not
+  // permanently allocated to this particular brand.
+  return emp.podId === brand.podId && data.allocations.some(
+    (a) => a.employeeId === employeeId && a.processId === processId,
+  );
+}
+
 /** Processes covered by a date-specific recovery instruction. */
 export function recoveryProcesses(
   data: RosterData,
@@ -179,7 +247,7 @@ export function recoveryProcesses(
 ): ProcessId[] {
   if (type === 'temporary-backup') return [targetProcess];
   const processes = brand.processes
-    .filter((bp) => isOperatingDay(bp.rule, date, data.holidays))
+    .filter((bp) => isOperatingDay(bp.rule, date, data.holidays, bp.customOperatingDates))
     .filter((bp) => allocatedTo(data, employeeId, brand.id, bp.processId))
     .map((bp) => bp.processId);
   if (!processes.includes(targetProcess)) processes.push(targetProcess);
@@ -187,10 +255,166 @@ export function recoveryProcesses(
 }
 
 // ---------------------------------------------------------------------------
+// Input validation — fail with an explanation instead of producing nonsense.
+// ---------------------------------------------------------------------------
+
+export function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+/** Returns human-readable input errors. An empty array means the input is usable. */
+export function validateRosterInput(data: RosterData, year: number, month: number): string[] {
+  if (!data || typeof data !== 'object') return ['Roster data is missing or malformed.'];
+  const errors: string[] = [];
+  if (!Number.isInteger(year) || year < 1900 || year > 2200) {
+    errors.push(`Invalid scheduling year: ${String(year)}.`);
+  }
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    errors.push(`Invalid scheduling month: ${String(month)}. Use 1-12.`);
+  }
+  if (!Array.isArray(data.employees) || data.employees.length === 0) {
+    errors.push('At least one employee is required.');
+  }
+  if (!Array.isArray(data.brands) || data.brands.length === 0) {
+    errors.push('At least one brand is required.');
+  }
+  if (!Array.isArray(data.allocations)) errors.push('Allocations must be an array.');
+  if (!Array.isArray(data.holidays)) errors.push('Holidays must be an array.');
+
+  const employeeIds = new Set<string>();
+  for (const emp of data.employees ?? []) {
+    if (!emp.id || employeeIds.has(emp.id)) {
+      errors.push(`Duplicate or empty employee id: ${String(emp.id)}.`);
+    }
+    employeeIds.add(emp.id);
+    if (!emp.name) errors.push(`Employee ${emp.id} has no name.`);
+    if (!Array.isArray(emp.weeklyOff) || emp.weeklyOff.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) {
+      errors.push(`Employee ${emp.id} has invalid weekly-off days.`);
+    }
+    for (const date of [...(emp.leaves ?? []), ...(emp.compOffs ?? [])]) {
+      if (!isIsoDate(date)) errors.push(`Employee ${emp.id} has an invalid leave/comp-off date: ${date}.`);
+    }
+  }
+
+  const brandById = new Map<string, Brand>();
+  for (const brand of data.brands ?? []) {
+    if (!brand.id || brandById.has(brand.id)) {
+      errors.push(`Duplicate or empty brand id: ${String(brand.id)}.`);
+    }
+    brandById.set(brand.id, brand);
+    if (!brand.name) errors.push(`Brand ${brand.id} has no name.`);
+    const processIds = new Set<string>();
+    for (const process of brand.processes ?? []) {
+      if (!process.processId || processIds.has(process.processId)) {
+        errors.push(`Brand ${brand.id} has a duplicate or empty process id: ${String(process.processId)}.`);
+      }
+      processIds.add(process.processId);
+      if (!Number.isInteger(process.minStaff) || process.minStaff < 0) {
+        errors.push(`Brand ${brand.id} ${process.processId} has an invalid minimum staffing: ${String(process.minStaff)}.`);
+      }
+      if (!['ALL_YEAR', 'EXCEPT_HOLIDAYS', 'NO_SUN_HOLIDAYS', 'CUSTOM'].includes(process.rule)) {
+        errors.push(`Brand ${brand.id} ${process.processId} has an unknown operating rule: ${String(process.rule)}.`);
+      }
+      if (process.rule === 'CUSTOM' && (process.customOperatingDates ?? []).some((date) => !isIsoDate(date))) {
+        errors.push(`Brand ${brand.id} ${process.processId} has an invalid custom operating date.`);
+      }
+    }
+  }
+
+  for (const allocation of data.allocations ?? []) {
+    const brand = brandById.get(allocation.brandId);
+    if (!employeeIds.has(allocation.employeeId)) {
+      errors.push(`Allocation references unknown employee ${allocation.employeeId}.`);
+    }
+    if (!brand) {
+      errors.push(`Allocation references unknown brand ${allocation.brandId}.`);
+    } else if (!brand.processes.some((p) => p.processId === allocation.processId)) {
+      errors.push(`Allocation references unknown process ${allocation.brandId}-${allocation.processId}.`);
+    }
+    if (allocation.role !== 'primary' && allocation.role !== 'secondary') {
+      errors.push(`Allocation for ${allocation.employeeId} has an invalid role: ${String(allocation.role)}.`);
+    }
+  }
+
+  for (const holiday of data.holidays ?? []) {
+    if (!isIsoDate(holiday.date)) errors.push(`Invalid holiday date: ${holiday.date}.`);
+  }
+  for (const authorization of data.crossPodAuthorizations ?? []) {
+    const brand = brandById.get(authorization.brandId);
+    if (!employeeIds.has(authorization.employeeId) || !brand ||
+      !brand.processes.some((p) => p.processId === authorization.processId)) {
+      errors.push(`Cross-pod authorization references an unknown employee, brand or process.`);
+    }
+  }
+  for (const pair of data.incompatiblePairs ?? []) {
+    for (const [brandId, processId] of [[pair.brandId1, pair.processId1], [pair.brandId2, pair.processId2]]) {
+      const brand = brandById.get(brandId);
+      if (!brand || !brand.processes.some((p) => p.processId === processId)) {
+        errors.push(`Incompatible pair references unknown process ${brandId}-${processId}.`);
+      }
+    }
+  }
+  if (data.workloadPolicy?.enabled) {
+    for (const demand of data.workloadPolicy.demands) {
+      if (!isIsoDate(demand.date)) errors.push(`Workload demand has an invalid date: ${demand.date}.`);
+      if (!brandById.get(demand.brandId)?.processes.some((p) => p.processId === demand.processId)) {
+        errors.push(`Workload demand references unknown process ${demand.brandId}-${demand.processId}.`);
+      }
+      if (!Number.isFinite(demand.demandHours) || demand.demandHours < 0) {
+        errors.push(`Workload demand for ${demand.brandId}-${demand.processId} on ${demand.date} is invalid.`);
+      }
+    }
+    for (const capacity of data.workloadPolicy.capacities) {
+      if (!employeeIds.has(capacity.employeeId)) {
+        errors.push(`Workload capacity references unknown employee ${capacity.employeeId}.`);
+      }
+      if (!isIsoDate(capacity.date)) errors.push(`Workload capacity has an invalid date: ${capacity.date}.`);
+      if (!Number.isFinite(capacity.maxDailyHours) || capacity.maxDailyHours < 0) {
+        errors.push(`Workload capacity for ${capacity.employeeId} on ${capacity.date} is invalid.`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+function invalidInputResult(year: number, month: number, errors: string[]): RosterResult {
+  return {
+    year,
+    month,
+    days: [],
+    entries: [],
+    coverage: [],
+    conflicts: errors.map((message, index) => ({
+      id: `input-${index}`,
+      type: 'INVALID_INPUT' as const,
+      severity: 'error' as const,
+      date: '',
+      message,
+      suggestion: 'Correct the roster data and generate again.',
+    })),
+    stats: {
+      operatingSlots: 0,
+      coveredSlots: 0,
+      gapSlots: 0,
+      understaffedSlots: 0,
+      warnings: 0,
+      errors: errors.length,
+      coveragePct: 0,
+      employeesWorking: 0,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Generation — brand by brand, most-constrained brand first.
 // ---------------------------------------------------------------------------
 
 export function generateRoster(data: RosterData, year: number, month: number): RosterResult {
+  const inputErrors = validateRosterInput(data, year, month);
+  if (inputErrors.length > 0) return invalidInputResult(year, month, inputErrors);
   const days = daysInMonth(year, month);
   const entries: RosterEntry[] = [];
   const coverage: DayCoverage[] = [];
@@ -229,7 +453,7 @@ export function generateRoster(data: RosterData, year: number, month: number): R
       const targetProcess = targetBrand?.processes.find((p) => p.processId === directive.processId);
       if (!emp || !targetBrand || !targetProcess) continue;
       if (isHardUnavailable(emp, date)) continue;
-      if (!isOperatingDay(targetProcess.rule, date, data.holidays)) continue;
+      if (!isOperatingDay(targetProcess.rule, date, data.holidays, targetProcess.customOperatingDates)) continue;
 
       const existingBrand = assignedToday.get(emp.id);
       const isReassignment = directive.type === 'temporary-reassignment';
@@ -243,6 +467,7 @@ export function generateRoster(data: RosterData, year: number, month: number): R
       }
 
       const processes = recoveryProcesses(data, emp.id, targetBrand, directive.processId, directive.type, date);
+      if (hasIncompatibleDuty(data, targetBrand.id, processes)) continue;
       const existingEntry = dayEntries.find(
         (e) => e.employeeId === emp.id && e.brandId === targetBrand.id,
       );
@@ -264,7 +489,7 @@ export function generateRoster(data: RosterData, year: number, month: number): R
     // Tightest brands first: fewest available people relative to demand, so a
     // shared employee is spent where they are needed most.
     const demand = (brand: Brand): number => {
-      const ops = brand.processes.filter((bp) => isOperatingDay(bp.rule, date, data.holidays));
+      const ops = brand.processes.filter((bp) => isOperatingDay(bp.rule, date, data.holidays, bp.customOperatingDates));
       return ops.reduce((n, bp) => n + bp.minStaff, 0);
     };
     const availableCount = (brand: Brand): number =>
@@ -280,12 +505,20 @@ export function generateRoster(data: RosterData, year: number, month: number): R
     });
 
     for (const brand of brandOrder) {
-      const operating = brand.processes.filter((bp) => isOperatingDay(bp.rule, date, data.holidays));
+      const operating = brand.processes.filter((bp) => isOperatingDay(bp.rule, date, data.holidays, bp.customOperatingDates));
       if (operating.length === 0) continue;
 
+      const processesAtBrand = (emp: Employee): ProcessId[] => operating
+        .filter((bp) => allocatedTo(data, emp.id, brand.id, bp.processId))
+        .map((bp) => bp.processId);
       const candidates = (empsByBrand.get(brand.id) ?? [])
         .map((id) => empById.get(id)!)
-        .filter((emp) => emp !== undefined && !isHardUnavailable(emp, date) && !assignedToday.has(emp.id));
+        .filter((emp) =>
+          emp !== undefined &&
+          !isHardUnavailable(emp, date) &&
+          !assignedToday.has(emp.id) &&
+          hasIncompatibleDuty(data, brand.id, processesAtBrand(emp)) === null,
+        );
 
       // Prefer: not on weekly off today, then more primary allocations at this
       // brand (the person who owns the brand), then name for determinism.
@@ -346,9 +579,7 @@ export function generateRoster(data: RosterData, year: number, month: number): R
 
       for (const emp of picked) {
         assignedToday.set(emp.id, brand.id);
-        const procs = operating
-          .filter((bp) => allocatedTo(data, emp.id, brand.id, bp.processId))
-          .map((bp) => bp.processId);
+        const procs = processesAtBrand(emp);
         dayEntries.push({
           date,
           employeeId: emp.id,
@@ -371,7 +602,7 @@ export function generateRoster(data: RosterData, year: number, month: number): R
     // Coverage for the day, computed from the entries just made.
     for (const brand of data.brands) {
       for (const bp of brand.processes) {
-        if (!isOperatingDay(bp.rule, date, data.holidays)) {
+        if (!isOperatingDay(bp.rule, date, data.holidays, bp.customOperatingDates)) {
           coverage.push({
             date, brandId: brand.id, processId: bp.processId,
             operating: false, required: bp.minStaff, scheduled: [], overriddenOff: [],
@@ -438,6 +669,98 @@ export function validateRoster(data: RosterData, entries: RosterEntry[], coverag
 
   const brandName = (id?: string) => (id ? brandById.get(id)?.name ?? id : '');
   const empName = (id?: string) => (id ? empById.get(id)?.name ?? id : '');
+
+  // 0. Entry-level hard constraints. Generation is not trusted to have got
+  // these right; a manual or recovery entry is checked independently.
+  for (const entry of entries) {
+    const emp = empById.get(entry.employeeId);
+    const brand = brandById.get(entry.brandId);
+    if (!emp) {
+      conflicts.push({
+        id: `unknown-${entry.date}-${entry.employeeId}`,
+        type: 'UNKNOWN_EMPLOYEE',
+        severity: 'error',
+        date: entry.date,
+        brandId: entry.brandId,
+        employeeId: entry.employeeId,
+        message: `Unknown employee ${entry.employeeId} appears in the roster on ${entry.date}.`,
+        suggestion: 'Remove the assignment or add the employee to the roster data.',
+      });
+      continue;
+    }
+    if (!brand) {
+      conflicts.push({
+        id: `unknown-brand-${entry.date}-${entry.employeeId}`,
+        type: 'CALENDAR_VIOLATION',
+        severity: 'error',
+        date: entry.date,
+        brandId: entry.brandId,
+        employeeId: entry.employeeId,
+        message: `Unknown brand ${entry.brandId} appears in the roster on ${entry.date}.`,
+        suggestion: 'Remove the assignment or add the brand to the roster data.',
+      });
+      continue;
+    }
+
+    for (const processId of entry.processes) {
+      const bp = brand.processes.find((p) => p.processId === processId);
+      if (!bp) {
+        conflicts.push({
+          id: `unknown-process-${entry.date}-${entry.employeeId}-${processId}`,
+          type: 'CALENDAR_VIOLATION',
+          severity: 'error',
+          date: entry.date,
+          brandId: entry.brandId,
+          processId,
+          employeeId: entry.employeeId,
+          message: `Unknown process ${entry.brandId}-${processId} appears on ${entry.date}.`,
+          suggestion: 'Remove the assignment or add the process to the brand.',
+        });
+        continue;
+      }
+      if (!isOperatingDay(bp.rule, entry.date, data.holidays, bp.customOperatingDates)) {
+        conflicts.push({
+          id: `closed-${entry.date}-${entry.employeeId}-${brand.id}-${processId}`,
+          type: 'CALENDAR_VIOLATION',
+          severity: 'error',
+          date: entry.date,
+          brandId: brand.id,
+          processId,
+          employeeId: entry.employeeId,
+          message: `${emp.name} is assigned to ${brand.name} ${processId} on ${entry.date}, but that process is closed.`,
+          suggestion: 'Remove the assignment or change the process operating rule.',
+        });
+      }
+      if (!authorizedFor(data, entry.employeeId, brand.id, processId)) {
+        conflicts.push({
+          id: `unauthorized-${entry.date}-${entry.employeeId}-${brand.id}-${processId}`,
+          type: 'UNAUTHORIZED_ASSIGNMENT',
+          severity: 'error',
+          date: entry.date,
+          brandId: brand.id,
+          processId,
+          employeeId: entry.employeeId,
+          message: `${emp.name} is assigned to ${brand.name} ${processId} on ${entry.date} without an allocation or cross-pod authorization.`,
+          suggestion: 'Add an allocation or explicit cross-pod authorization, or remove the assignment.',
+        });
+      }
+    }
+
+    const incompatible = hasIncompatibleDuty(data, brand.id, entry.processes);
+    if (incompatible) {
+      conflicts.push({
+        id: `incompatible-${entry.date}-${entry.employeeId}-${brand.id}-${incompatible[0]}-${incompatible[1]}`,
+        type: 'INCOMPATIBLE_DUTY',
+        severity: 'error',
+        date: entry.date,
+        brandId: brand.id,
+        processId: incompatible[0],
+        employeeId: entry.employeeId,
+        message: `${emp.name} is assigned incompatible duties ${incompatible[0]} and ${incompatible[1]} at ${brand.name} on ${entry.date}.`,
+        suggestion: 'Split the incompatible processes between different employees.',
+      });
+    }
+  }
 
   // 1. Coverage: gaps and understaffing, with a concrete suggestion.
   for (const c of coverage) {
@@ -530,6 +853,122 @@ export function validateRoster(data: RosterData, entries: RosterEntry[], coverag
     }
   }
 
+  // 5. Optional working-hour demand/capacity policy.
+  conflicts.push(...validateWorkloadPolicy(data, entries));
+
+  return conflicts;
+}
+
+/** Deterministic max-flow check for the optional workload policy. */
+function validateWorkloadPolicy(data: RosterData, entries: RosterEntry[]): Conflict[] {
+  const policy = data.workloadPolicy;
+  if (!policy?.enabled || policy.demands.length === 0 || policy.capacities.length === 0) return [];
+
+  const conflicts: Conflict[] = [];
+  const dates = [...new Set(policy.demands.map((d) => d.date))].sort();
+  for (const date of dates) {
+    const dayEntries = entries.filter((e) => e.date === date);
+    const employees = [...new Set(dayEntries.map((e) => e.employeeId))].sort();
+    const demands: WorkloadRequirement[] = policy.demands.filter(
+      (demand) => demand.date === date && demand.demandHours > 0,
+    );
+    if (demands.length === 0) continue;
+
+    const capFor = (employeeId: string): number => {
+      const cap = policy.capacities.find((c) => c.employeeId === employeeId && c.date === date);
+      return Math.max(0, Math.round((cap?.maxDailyHours ?? 8) * 10));
+    };
+    const processCapFor = (employeeId: string, brandId: string, processId: ProcessId): number => {
+      const cap = policy.capacities.find((c) => c.employeeId === employeeId && c.date === date);
+      const key = `${brandId}:${processId}`;
+      const hours = cap?.processCapacityHours[key] ?? cap?.processCapacityHours[processId];
+      return Math.max(0, Math.round((hours ?? cap?.maxDailyHours ?? 8) * 10));
+    };
+
+    // Nodes: source (0), employees, demands, sink.
+    const employeeOffset = 1;
+    const demandOffset = employeeOffset + employees.length;
+    const sink = demandOffset + demands.length;
+    interface FlowEdge { to: number; cap: number; flow: number; rev: number }
+    const graph: FlowEdge[][] = Array.from({ length: sink + 1 }, () => []);
+    const addEdge = (from: number, to: number, cap: number): FlowEdge => {
+      const forward: FlowEdge = { to, cap, flow: 0, rev: graph[to].length };
+      const reverse: FlowEdge = { to: from, cap: 0, flow: 0, rev: graph[from].length };
+      graph[from].push(forward);
+      graph[to].push(reverse);
+      return forward;
+    };
+
+    employees.forEach((employeeId, index) => addEdge(0, employeeOffset + index, capFor(employeeId)));
+    const demandEdges: FlowEdge[] = [];
+    demands.forEach((demand, index) => {
+      demandEdges.push(addEdge(demandOffset + index, sink, Math.round(demand.demandHours * 10)));
+    });
+
+    employees.forEach((employeeId, employeeIndex) => {
+      const employeeEntries = dayEntries.filter((e) => e.employeeId === employeeId);
+      demands.forEach((demand, demandIndex) => {
+        const assigned = employeeEntries.some(
+          (e) => e.brandId === demand.brandId && e.processes.includes(demand.processId),
+        );
+        if (!assigned) return;
+        addEdge(
+          employeeOffset + employeeIndex,
+          demandOffset + demandIndex,
+          Math.min(capFor(employeeId), processCapFor(employeeId, demand.brandId, demand.processId)),
+        );
+      });
+    });
+
+    // Edmonds-Karp. The graphs are tiny (tens of nodes), so clarity wins.
+    while (true) {
+      const parent = new Array<{ node: number; edge: number } | null>(graph.length).fill(null);
+      const queue = [0];
+      parent[0] = { node: -1, edge: -1 };
+      for (let head = 0; head < queue.length && parent[sink] === null; head += 1) {
+        const node = queue[head];
+        for (let edgeIndex = 0; edgeIndex < graph[node].length; edgeIndex += 1) {
+          const edge = graph[node][edgeIndex];
+          if (edge.cap - edge.flow <= 0 || parent[edge.to] !== null) continue;
+          parent[edge.to] = { node, edge: edgeIndex };
+          queue.push(edge.to);
+        }
+      }
+      if (parent[sink] === null) break;
+      let bottleneck = Number.POSITIVE_INFINITY;
+      for (let node = sink; node !== 0;) {
+        const step = parent[node]!;
+        bottleneck = Math.min(bottleneck, graph[step.node][step.edge].cap - graph[step.node][step.edge].flow);
+        node = step.node;
+      }
+      for (let node = sink; node !== 0;) {
+        const step = parent[node]!;
+        const edge = graph[step.node][step.edge];
+        edge.flow += bottleneck;
+        graph[node][edge.rev].flow -= bottleneck;
+        node = step.node;
+      }
+    }
+
+    demands.forEach((demand, index) => {
+      const edge = demandEdges[index];
+      const supplied = edge.flow;
+      const required = Math.round(demand.demandHours * 10);
+      if (supplied < required) {
+        const brand = data.brands.find((b) => b.id === demand.brandId);
+        conflicts.push({
+          id: `workload-${date}-${demand.brandId}-${demand.processId}`,
+          type: 'WORKLOAD_SHORTAGE',
+          severity: 'error',
+          date,
+          brandId: demand.brandId,
+          processId: demand.processId,
+          message: `${brand?.name ?? demand.brandId} ${demand.processId} needs ${(required / 10).toFixed(1)}h on ${date}, but only ${(Math.max(0, supplied) / 10).toFixed(1)}h of scheduled capacity can cover it.`,
+          suggestion: 'Add scheduled capacity for this process or reduce the daily demand.',
+        });
+      }
+    });
+  }
   return conflicts;
 }
 
@@ -587,184 +1026,3 @@ export function rosterToCsv(data: RosterData, result: RosterResult): string {
   return lines.join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// CP-SAT Integration Layer
-// ---------------------------------------------------------------------------
-
-export async function checkCPSATHealth(): Promise<boolean> {
-  try {
-    const res = await fetch('/api/health');
-    if (!res.ok) return false;
-    const json = await res.json();
-    return json.ready === true;
-  } catch {
-    return false;
-  }
-}
-
-export async function generateRosterCPSAT(
-  data: RosterData,
-  year: number,
-  month: number,
-  timeoutSeconds: number = 10.0,
-): Promise<RosterResult> {
-  // Date-specific recovery instructions are applied by the local roster-aware
-  // generator. The CP-SAT bridge models permanent allocations only, so sending
-  // recovery directives to it would silently drop them.
-  if ((data.recoveryAssignments?.length ?? 0) > 0) {
-    const local = generateRoster(data, year, month);
-    local.solverStatus = 'FEASIBLE';
-    return local;
-  }
-  const days = daysInMonth(year, month);
-  const payload = {
-    employees: data.employees.map((e) => ({
-      id: e.id,
-      name: e.name,
-      pod_id: e.podId,
-      weekly_off: e.weeklyOff,
-      leaves: e.leaves,
-      comp_offs: e.compOffs,
-      min_weekly_off: 1,
-      max_weekly_off: 2,
-    })),
-    brands: data.brands.map((b) => ({
-      id: b.id,
-      name: b.name,
-      category: b.category,
-      pod_id: b.podId,
-      processes: b.processes.map((p) => ({
-        process_id: p.processId,
-        rule: p.rule,
-        min_staff: p.minStaff,
-      })),
-    })),
-    allocations: data.allocations.map((a) => ({
-      employee_id: a.employeeId,
-      brand_id: a.brandId,
-      process_id: a.processId,
-      role: a.role,
-    })),
-    holidays: data.holidays,
-    dates: days,
-    timeout_seconds: timeoutSeconds,
-    // The web UI follows the brand-level business rule (one brand per day,
-    // every allocated process at that brand). Keep the bridge explicit about it.
-    assignment_semantics: 'brand',
-  };
-
-  try {
-    const res = await fetch('/api/schedule', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      return generateRoster(data, year, month);
-    }
-
-    const json = await res.json();
-    if (res.status === 200 || res.status === 422) {
-      let entries: RosterEntry[] = (json.entries || []).map((e: any) => ({
-        date: e.date,
-        employeeId: e.employee_id,
-        brandId: e.brand_id,
-        processes: e.processes,
-        overriddenOff: e.is_weekly_off || false,
-      }));
-
-      const coverage: DayCoverage[] = (json.coverage || []).map((c: any) => ({
-        date: c.date,
-        brandId: c.brand_id,
-        processId: c.process_id,
-        operating: c.operating,
-        required: c.required,
-        scheduled: c.scheduled,
-        overriddenOff: [],
-        status: c.status,
-      }));
-
-      // When solver provides diagnostic schedule on infeasible constraints, populate entries from coverage
-      if (entries.length === 0 && coverage.length > 0) {
-        const empDateMap = new Map<string, { brandId: string; processes: ProcessId[]; overriddenOff: boolean }>();
-        for (const cov of coverage) {
-          if (cov.operating && cov.scheduled) {
-            for (const empId of cov.scheduled) {
-              const key = `${empId}|${cov.date}`;
-              const existing = empDateMap.get(key);
-              if (existing) {
-                if (!existing.processes.includes(cov.processId)) {
-                  existing.processes.push(cov.processId);
-                }
-              } else {
-                const emp = data.employees.find((e) => e.id === empId);
-                empDateMap.set(key, {
-                  brandId: cov.brandId,
-                  processes: [cov.processId],
-                  overriddenOff: emp ? isWeeklyOff(emp, cov.date) : false,
-                });
-              }
-            }
-          }
-        }
-        for (const [key, val] of empDateMap.entries()) {
-          const [employeeId, date] = key.split('|');
-          entries.push({
-            date,
-            employeeId,
-            brandId: val.brandId,
-            processes: val.processes,
-            overriddenOff: val.overriddenOff,
-          });
-        }
-      }
-
-      const conflicts: Conflict[] = (json.conflicts || []).map((cf: any) => ({
-        id: cf.id,
-        type: cf.type,
-        severity: cf.severity,
-        date: cf.date,
-        brandId: cf.brand_id,
-        processId: cf.process_id,
-        employeeId: cf.employee_id,
-        message: cf.message,
-        suggestion: cf.suggestion,
-      }));
-
-      const opSlots = json.stats?.operating_slots || 0;
-      const covSlots = json.stats?.covered_slots || 0;
-      const calcPct = opSlots > 0 ? Math.round((covSlots / opSlots) * 100) : 100;
-
-      const stats: RosterStats = {
-        operatingSlots: opSlots,
-        coveredSlots: covSlots,
-        gapSlots: json.stats?.gap_slots || 0,
-        understaffedSlots: json.stats?.understaffed_slots || 0,
-        warnings: json.stats?.warnings || 0,
-        errors: json.stats?.errors || 0,
-        coveragePct: json.stats?.coverage_pct && json.stats?.coverage_pct > 0 ? json.stats.coverage_pct : calcPct,
-        employeesWorking: json.stats?.employees_working && json.stats?.employees_working > 0 ? json.stats.employees_working : new Set(entries.map((e) => e.employeeId)).size,
-      };
-
-      return {
-        year,
-        month,
-        days,
-        entries,
-        coverage,
-        conflicts,
-        stats,
-        solverStatus: json.status,
-        diagnosticExplanations: json.diagnostic_explanations,
-      };
-    }
-  } catch (err) {
-    // Fall back to local synchronous generation if server offline
-    console.warn('CP-SAT server unavailable, falling back to local engine:', err);
-  }
-
-  const fallback = generateRoster(data, year, month);
-  fallback.solverStatus = 'FEASIBLE';
-  return fallback;
-}

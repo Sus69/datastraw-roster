@@ -379,7 +379,7 @@ export function evaluateRecoveryEligibility(
     crossPodAuthorized,
   };
 
-  if (!isOperatingDay(bp.rule, date, data.holidays)) {
+  if (!isOperatingDay(bp.rule, date, data.holidays, bp.customOperatingDates)) {
     return { ...enriched, eligible: false, rejectionCode: 'TARGET_NOT_OPERATING', rejectionReason: REJECTION_TEXT.TARGET_NOT_OPERATING };
   }
   if (isHardUnavailable(emp, date)) {
@@ -469,7 +469,7 @@ export function computeDayCoverage(
   const coverage: DayCoverage[] = [];
   for (const brand of data.brands) {
     for (const bp of brand.processes) {
-      if (!isOperatingDay(bp.rule, date, data.holidays)) {
+      if (!isOperatingDay(bp.rule, date, data.holidays, bp.customOperatingDates)) {
         coverage.push({
           date,
           brandId: brand.id,
@@ -585,7 +585,7 @@ export function simulateRecoveryDetailed(
       `Unknown destination ${directive.brandId}-${directive.processId}.`,
     );
   }
-  if (!isOperatingDay(targetProcess.rule, directive.date, data.holidays)) {
+  if (!isOperatingDay(targetProcess.rule, directive.date, data.holidays, targetProcess.customOperatingDates)) {
     return failed(
       'TARGET_NOT_OPERATING',
       `${brand.name} ${targetProcess.processId} is not operating on ${directive.date}.`,
@@ -680,7 +680,7 @@ export function simulateRecovery(
 function baselineCoverage(data: RosterData, result: RosterResult, date: string): DayCoverage[] {
   // Always derive baseline from the supplied entries. This keeps discovery,
   // simulation and validation consistent even when a caller supplies a patched
-  // entry list (and mirrors the Python implementation).
+  // entry list.
   return computeDayCoverage(data, result.entries, date);
 }
 
@@ -1249,7 +1249,7 @@ export function validateRecoveryProposal(
       processId: directive.processId,
     });
   }
-  if (!isOperatingDay(bp.rule, directive.date, data.holidays)) {
+  if (!isOperatingDay(bp.rule, directive.date, data.holidays, bp.customOperatingDates)) {
     return fail('TARGET_NOT_OPERATING', `${brand.name} ${bp.processId} is not operating on ${directive.date}.`, {
       brandId: brand.id,
       processId: bp.processId,

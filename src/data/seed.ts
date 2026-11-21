@@ -15,7 +15,7 @@ export const PROCESSES: { id: ProcessId; label: string; short: string }[] = [
 ];
 
 /** How a brand/process calendar behaves. */
-export type OperatingRule = 'ALL_YEAR' | 'EXCEPT_HOLIDAYS' | 'NO_SUN_HOLIDAYS';
+export type OperatingRule = 'ALL_YEAR' | 'EXCEPT_HOLIDAYS' | 'NO_SUN_HOLIDAYS' | 'CUSTOM';
 
 export const RULES: { id: OperatingRule; label: string; description: string }[] = [
   { id: 'ALL_YEAR', label: '365-day ops', description: 'Operates every day, including Sundays and public holidays.' },
@@ -28,6 +28,8 @@ export interface BrandProcess {
   rule: OperatingRule;
   /** Minimum number of employees who must be working that process on an operating day. */
   minStaff: number;
+  /** Explicit ISO operating dates for the CUSTOM calendar rule. */
+  customOperatingDates?: string[];
 }
 
 export interface Brand {

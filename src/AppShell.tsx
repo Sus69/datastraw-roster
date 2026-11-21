@@ -15,7 +15,6 @@ import {
 import type { Employee, OperatingRule, ProcessId, RecoveryAssignment } from './data/seed';
 import {
   generateRoster,
-  generateRosterCPSAT,
   isHardUnavailable,
   isOperatingDay,
   isWeeklyOff,
@@ -245,19 +244,17 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     queueMicrotask(() => {
-      if (!cancelled) setIsSolving(true);
-    });
-    generateRosterCPSAT(data, year, month).then((res) => {
-      if (!cancelled) {
-        setResult(res);
-        setIsSolving(false);
-      }
-    }).catch(() => {
-      if (!cancelled) {
-        const fallback = generateRoster(data, year, month);
-        fallback.solverStatus = 'FEASIBLE';
-        setResult(fallback);
-        setIsSolving(false);
+      if (cancelled) return;
+      setIsSolving(true);
+      try {
+        const generated = generateRoster(data, year, month);
+        if (!cancelled) setResult(generated);
+      } catch (error) {
+        // The engine reports invalid input as conflicts; this only guards
+        // against an unexpected failure so the UI never stays on "Solving".
+        console.error('Roster generation failed:', error);
+      } finally {
+        if (!cancelled) setIsSolving(false);
       }
     });
     return () => { cancelled = true; };
@@ -1412,7 +1409,7 @@ function InspectorModal(props: InspectorModalProps) {
           if (allocation.employeeId !== emp.id) continue;
           const brand = data.brands.find((b) => b.id === allocation.brandId);
           const process = brand?.processes.find((p) => p.processId === allocation.processId);
-          if (!brand || !process || !isOperatingDay(process.rule, date, data.holidays)) continue;
+          if (!brand || !process || !isOperatingDay(process.rule, date, data.holidays, process.customOperatingDates)) continue;
           const key = `${allocation.brandId}|${allocation.processId}`;
           if (seen.has(key)) continue;
           seen.add(key);

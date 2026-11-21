@@ -19,16 +19,28 @@ def main():
     parser = argparse.ArgumentParser(description="Smart Workforce Scheduling Engine (CP-SAT)")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # Assignment granularity. "process" is the legacy CP-SAT contract (one
+    # brand/process per employee-day); "brand" is the application's business
+    # rule (one brand per day, covering every allocated process at that brand).
+    # Left at None the input file's own value is used, which defaults to
+    # "process", so existing fixtures and tests keep their behaviour.
+    semantics_help = (
+        "Assignment semantics: 'process' (legacy default) or 'brand' "
+        "(matches the browser app). Omit to use the input file's value."
+    )
+
     # Solve command
     solve_parser = subparsers.add_parser("solve", help="Generate or optimize a workforce roster")
     solve_parser.add_argument("--input", "-i", required=True, help="Path to input JSON file")
     solve_parser.add_argument("--output", "-o", help="Path to save result JSON file")
     solve_parser.add_argument("--timeout", type=float, default=10.0, help="Solver timeout in seconds")
+    solve_parser.add_argument("--semantics", choices=["process", "brand"], help=semantics_help)
 
     # Validate command
     val_parser = subparsers.add_parser("validate", help="Validate an existing roster against hard constraints")
     val_parser.add_argument("--input", "-i", required=True, help="Path to input JSON specification")
     val_parser.add_argument("--roster", "-r", required=True, help="Path to roster entries JSON file")
+    val_parser.add_argument("--semantics", choices=["process", "brand"], help=semantics_help)
 
     # Re-optimize command
     reopt_parser = subparsers.add_parser("reoptimize", help="Dynamically re-optimize an existing roster")
@@ -37,6 +49,7 @@ def main():
     reopt_parser.add_argument("--emp", help="Employee ID becoming unavailable")
     reopt_parser.add_argument("--date", help="Date of unavailability (YYYY-MM-DD)")
     reopt_parser.add_argument("--output", "-o", help="Path to save re-optimized result JSON")
+    reopt_parser.add_argument("--semantics", choices=["process", "brand"], help=semantics_help)
 
     # Recovery command
     recover_parser = subparsers.add_parser("recover", help="Find safe, ranked repairs for an uncovered slot")
@@ -47,13 +60,19 @@ def main():
     recover_parser.add_argument("--process", required=True, help="Process id of the uncovered slot")
     recover_parser.add_argument("--exclude", help="Employee id to exclude from candidates")
     recover_parser.add_argument("--output", "-o", help="Path to save recovery analysis JSON")
+    recover_parser.add_argument("--semantics", choices=["process", "brand"], help=semantics_help)
 
     args = parser.parse_args()
+
+    def _with_semantics(sched_input: SchedulingInput) -> SchedulingInput:
+        if args.semantics:
+            sched_input.assignment_semantics = args.semantics
+        return sched_input
 
     if args.command == "solve":
         with open(args.input, "r", encoding="utf-8") as f:
             data = json.load(f)
-        sched_input = SchedulingInput.from_dict(data)
+        sched_input = _with_semantics(SchedulingInput.from_dict(data))
         sched_input.timeout_seconds = args.timeout
 
         engine = SchedulingEngine(sched_input)
@@ -75,7 +94,7 @@ def main():
         with open(args.roster, "r", encoding="utf-8") as f:
             roster_data = json.load(f)
 
-        sched_input = SchedulingInput.from_dict(spec_data)
+        sched_input = _with_semantics(SchedulingInput.from_dict(spec_data))
         if isinstance(roster_data, dict) and "entries" in roster_data:
             entries = [RosterEntry(**e) for e in roster_data["entries"]]
         elif isinstance(roster_data, list):
@@ -84,15 +103,17 @@ def main():
             print("Invalid roster JSON format. Expected list of entries or dict with 'entries'.")
             sys.exit(2)
 
-        is_valid, violations = RosterValidator.validate(sched_input, entries)
-        if is_valid:
-            print("ROSTER VALIDATION SUCCESSFUL: All hard constraints satisfied.")
+        report = RosterValidator.validate(sched_input, entries)
+        if report.is_valid:
+            print(
+                "ROSTER VALIDATION SUCCESSFUL: All hard constraints satisfied "
+                f"({len(report.warnings)} warning(s))."
+            )
             sys.exit(0)
-        else:
-            print(f"ROSTER VALIDATION FAILED: {len(violations)} constraint violations found:")
-            for v in violations:
-                print(f"  - {v}")
-            sys.exit(1)
+        print(f"ROSTER VALIDATION FAILED: {len(report.hard_failures)} constraint violations found:")
+        for violation in report.hard_failures:
+            print(f"  - {violation}")
+        sys.exit(1)
 
     elif args.command == "recover":
         with open(args.input, "r", encoding="utf-8") as f:
@@ -100,7 +121,7 @@ def main():
         with open(args.roster, "r", encoding="utf-8") as f:
             roster_data = json.load(f)
 
-        sched_input = SchedulingInput.from_dict(spec_data)
+        sched_input = _with_semantics(SchedulingInput.from_dict(spec_data))
         if isinstance(roster_data, dict) and "entries" in roster_data:
             entries = [RosterEntry(**e) for e in roster_data["entries"]]
         else:
@@ -129,7 +150,7 @@ def main():
         with open(args.roster, "r", encoding="utf-8") as f:
             roster_data = json.load(f)
 
-        sched_input = SchedulingInput.from_dict(spec_data)
+        sched_input = _with_semantics(SchedulingInput.from_dict(spec_data))
         if isinstance(roster_data, dict) and "entries" in roster_data:
             entries = [RosterEntry(**e) for e in roster_data["entries"]]
         else:

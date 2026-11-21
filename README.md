@@ -18,6 +18,12 @@ broken one.
 client needs coverage on someone's preferred weekly off, coverage wins — but
 the app flags the shift so a manager can see the cost.
 
+One clarification on that 875: it counts operating brand/process coverage
+slots, one per brand, process and day — the app's unit of coverage, shown as
+`x/y` on every process row and date. The same month holds 585 employee working
+days, because one employee shift covers every process that person is allocated
+to at that brand. 875 and 585 are different things, not a contradiction.
+
 It's React 19 + TypeScript + Vite. The app has no backend and needs no
 network: the seed data ships with it and edits save in the browser
 (localStorage). There is an optional Python/CP-SAT bridge you can run on
@@ -25,8 +31,11 @@ localhost for solver comparison and server-side validation, but the app works
 without it. One thing to be straight about: the deployed Vercel build is a
 static site with no `api/` backend, so the live app runs the deterministic
 greedy engine in `src/lib/engine.ts` plus its own independent validation pass.
-The CP-SAT bridge is local-only (more in "Constraint Programming (CP-SAT)
-Engine" below).
+The app still *tries* `POST /api/schedule` once per generation; with no bridge
+deployed that request fails, the fallback to the local engine is silent apart
+from a console warning, and nothing in the UI reports a CP-SAT status. The
+CP-SAT bridge is local-only (more in "Constraint Programming (CP-SAT) Engine"
+below).
 
 ## Setup
 
@@ -68,16 +77,20 @@ no backend. The only optional local service is the CP-SAT bridge
   weekly-off overrides, double-booking and leave clashes. Each one comes with
   a plain explanation and a suggested fix. Missing coverage or someone
   scheduled on leave is an error; a weekly-off override is a warning.
-- **Views:** a company-wide monthly grid, plus pod-wise, brand-wise (coverage
-  per day), process-wise and employee-wise views (working days, offs,
-  holidays, leaves).
-- **Editing:** change weekly offs, add or remove leaves, change a
-  brand/process operating rule or minimum staffing — the whole month
+- **Views:** a company-wide monthly grid (map and detail grid), plus pod-wise,
+  brand-wise (coverage per day, with editable rules and minimum staffing),
+  process-wise and employee-wise views (working days, hours, capacity
+  utilisation and weekly-off overrides). Offs, holidays and leaves are shown
+  on the company grid and in the day inspector.
+- **Editing:** change weekly offs, add a leave (mark any day unavailable),
+  change a brand/process operating rule or minimum staffing — the whole month
   re-generates and re-validates straight away. Edits save in localStorage;
   "Reset to seed data" puts the original dataset back.
-- **Simulate a change:** mark any employee unavailable on any day, see the new
-  conflicts it would create and the suggested backup, then apply it or throw
-  it away.
+- **Simulate a change:** mark any employee unavailable on any day, see the
+  capacity delta and the new conflicts it would create, then apply it or
+  discard it. The default example is Aarav Mehta on 14 Dec 2026 — a day he is
+  actually scheduled (GlowKart, all three processes), so the preview shows a
+  real trade-off rather than an empty one.
 - **Roster recovery:** "Find backup" isn't a guess — it's a constraint-aware
   recovery engine. It looks for unassigned same-brand and same-pod people
   plus employees on other brands who can safely move, simulates the whole
@@ -85,8 +98,8 @@ no backend. The only optional local service is the CP-SAT bridge
   independently validates the repair, ranks the valid ones
   lexicographically, and keeps every repair tied to one date. Permanent
   allocations and unrelated roster entries are never silently changed.
-- **Extras:** CSV export of the roster, search/filter, and a backup
-  suggestion on every conflict.
+- **Extras:** CSV export of the roster, search/filter, and a `Find backup`
+  action on every coverage conflict (gaps and understaffing).
 - **Recovery Lab:** a visualizer built on the same recovery engine. Mark
   someone unavailable or pick an existing shortage, then run the real
   candidate check, simulation, ranking and validation. The Lab shows the
@@ -107,9 +120,9 @@ no backend. The only optional local service is the CP-SAT bridge
 
 | Brief requirement | Where it lives in this repo |
 | --- | --- |
-| A. Team / brand / process management (§3A) | `src/data/seed.ts` — 36 employees, 12 brands, 4 pods with leads, 72 allocations; edit weekly offs, leaves, operating rules and minimum staffing in the UI (no code change); new brands/employees are added in `seed.ts` — see Q7 |
+| A. Team / brand / process management (§3A) | `src/data/seed.ts` — 36 employees, 12 brands, 4 pods with leads, 72 allocations; edit weekly offs, add leaves, edit operating rules and minimum staffing in the UI (no code change); new brands/employees are added in `seed.ts` — see Q7 |
 | B. Client-specific working rules (§3B) | Three operating rules per brand/process: `ALL_YEAR` (365-day), `EXCEPT_HOLIDAYS`, `NO_SUN_HOLIDAYS`; minimum staffing per brand/process; brand calendar is separate from each employee's schedule |
-| C. Monthly roster generation (§3C) | Month picker (default December 2026) in `src/lib/engine.ts`; most-constrained slots first; shows who works, who is off, and per-day coverage |
+| C. Monthly roster generation (§3C) | Month picker (default December 2026) in `src/AppShell.tsx`, generation in `src/lib/engine.ts`; most-constrained slots first; shows who works, who is off, and per-day coverage |
 | D. Conflict detection & validation (§3D) | `validateRoster` independent pass + Conflicts view: gaps, understaffing, double-booking, leave clashes (errors) vs weekly-off overrides (warnings); mandatory coverage beats a preferred weekly off |
 | E. Roster views & editing (§3E) | Company, pod, brand, process and employee views; edits re-generate and re-validate the whole month immediately |
 | F. Handling changes (§3F) | "Simulate a change" on Overview (e.g. Aarav Mehta unavailable 14 Dec) + constraint-aware recovery engine (`src/lib/recovery.ts`, `engine/recovery.py`) and Recovery Lab; repairs are date-specific and never edit permanent allocations |
@@ -127,12 +140,21 @@ no backend. The only optional local service is the CP-SAT bridge
   leaves and comp-offs are **hard** unavailability — the engine never
   schedules someone on leave.
 - I seeded the December 2026 data so it actually shows something: Aarav
-  Mehta is on leave 8–10 Dec and the backup pool covers GlowKart (including
-  recovery specialist e35 Isha Rao); both BookBarn employees are on leave
-  21 Dec and e36 Naveen Kumar covers; TechTrove on 3 Dec is covered too
-  (Farhan Khan working while Neha Joshi is on planned leave). A few
-  weekly-off overrides still show up on single-resource brands, so the
-  warning path stays visible.
+  Mehta is on leave 8–10 Dec and three people cover GlowKart — Vikram Singh
+  on Customer Support, Ananya Gupta on Abandoned Cart, and recovery
+  specialist e35 Isha Rao on Retention plus Customer Support. Both BookBarn
+  employees are on leave 21 Dec and e36 Naveen Kumar covers its CS and RET
+  in one working day. On 3 Dec Neha Joshi (TechTrove's primary) is on planned
+  leave, so Customer Support's minimum of 2 is met by Farhan Khan and Naveen
+  Kumar, with Pooja Desai on Abandoned Cart and Ishita Bose on Non-Delivery
+  Report. Weekly-off overrides still show up — on single-resource brands and
+  on AutoAce, whose CS minimum of 2 is more than its one CS primary can
+  cover — so the warning path stays visible.
+- The other months in the picker (Nov 2026, Jan 2027, Feb 2027) share the same
+  brands, allocations, weekly offs and holidays, but no leaves or comp-offs are
+  seeded outside December. Those months therefore generate clean rosters with
+  no gaps and only weekly-off overrides (15, 15 and 12 respectively), which is
+  exactly what the app shows when you switch the month.
 - The approach note is the Approach section below (§8 of the brief). The demo
   video link at the top of this README goes in once the video is recorded.
 
@@ -175,12 +197,16 @@ absence.
 ### 3. How did you handle the difference between single-resource brands and brands with multiple employees?
 
 A single-resource brand lives or dies by one person, so its coverage is
-fragile by design. Where I could, I gave those brands secondary/backup
-allocations from shared employees and pod floaters — GlowKart's Customer
-Support has a backup, its other processes don't. Multi-employee brands
-cross-cover: AutoAce's two primaries split its processes, BookBarn's two
-employees are each secondary on the other's process, and WellnessWave's three
-split processes with cross-cover. The generator doesn't treat the two cases
+fragile by design. Each of the nine has at least one secondary allocation on
+every one of its processes, drawn from shared employees and pod floaters — but
+a name on an allocation is not the same as guaranteed cover, because those
+backups have their own brands and their own weekly offs. GlowKart is the
+clearest case: Ananya Gupta backs up Abandoned Cart and is also off on Sundays,
+so GlowKart's Sunday ACC shift is what puts Aarav Mehta on a weekly-off
+override four times in December. Multi-employee brands cross-cover: AutoAce's
+two primaries split its processes, BookBarn's two employees are each secondary
+on the other's process, and WellnessWave's three split processes with
+cross-cover. The generator doesn't treat the two cases
 differently — it just has more candidates to pick from on multi-employee
 brands. So a single-resource brand naturally throws up more warnings and gaps,
 which is the honest signal: it needs backup hiring.
@@ -277,7 +303,7 @@ src/
   lib/recovery.ts   Recovery candidate discovery, simulation, ranking and validation
   lib/recoveryLab.ts Recovery Lab scenario/trace integration over the same engine
   components/recovery/ Recovery Lab roster board, execution timeline and impact views
-  AppShell.tsx      UI: sidebar, month picker, 6 views, recovery review, editing, CP-SAT badge
+  AppShell.tsx      UI: sidebar, month picker, 7 views, recovery review, editing
   App.tsx           Entry re-export for the application shell
   App.css           Plain CSS, dark sidebar + light content
 ```
@@ -316,7 +342,20 @@ The browser engine uses the business rule **one brand per employee per day,
 covering every allocated process at that brand**. The legacy CP-SAT model was
 process-granular (one brand/process per day). `SchedulingInput.assignment_semantics`
 now makes this explicit: `"process"` preserves the existing CP-SAT test contract,
-while `"brand"` applies the UI business rule.
+while `"brand"` applies the UI business rule. The CLI exposes it as
+`--semantics brand`; omit the flag and you get the legacy `process` contract the
+test suite is written against.
+
+The distinction is not cosmetic. Run against the December seed data, the legacy
+`process` semantics cannot cover the month — one employee may then hold only one
+brand/process per day — so it reports shortages. With `--semantics brand` the
+same model solves to `OPTIMAL` with 875 of 875 coverage slots covered, 0 gaps,
+0 understaffed slots and the same 15 weekly-off overrides the browser engine
+produces. What the two engines do not share is the exact assignment: the greedy
+roster is deterministic, while CP-SAT runs four search workers and can return a
+different (equally `OPTIMAL`) assignment from run to run — sometimes leaving a
+floater unassigned, which is why its totals move between 35 and 36 people
+working, while the browser engine's December roster uses all 36.
 
 Recovery uses the same eligibility, immutable simulation, independent
 validation and lexicographical ranking rules in `src/lib/recovery.ts` and
@@ -408,21 +447,30 @@ python -m pytest tests -q
 # Run just the TypeScript recovery parity smoke tests
 npm run test:ts
 
-# Run CP-SAT solver via CLI
+# Run CP-SAT solver via CLI on the bundled self-test fixture
 npm run engine:solve -- --input datastraw_self_test_fixture.json --output roster.json
 
-# Validate existing roster against hard constraints
+# Validate that roster against hard constraints
 npm run engine:validate -- --input datastraw_self_test_fixture.json --roster roster.json
+
+# Solve the app's own December seed data with the browser business rule, then
+# validate the roster the solver produced
+npm run engine:solve -- --input src/data/seed_data.json --semantics brand --output seed-roster.json
+npm run engine:validate -- --input src/data/seed_data.json --roster seed-roster.json --semantics brand
+
+# Rank safe repairs for one brand/process slot in that seed roster
+python -m engine.cli recover --input src/data/seed_data.json --roster seed-roster.json --date 2026-12-03 --brand b04 --process CS --semantics brand
 
 # Re-optimize schedule after operational disruption
 npm run engine:reoptimize -- --input datastraw_self_test_fixture.json --roster roster.json --emp E01 --date 2026-11-25
 
-# Find and rank safe repairs for one uncovered process
-python -m engine.cli recover --input src/data/seed_data.json --roster roster.json --date 2026-12-03 --brand b04 --process CS
-
 # Start local CP-SAT API bridge server
 npm run engine:server
 ```
+
+Omit `--semantics brand` and every command keeps the legacy `process`
+granularity that the pytest suite is written against — that is why the flag is
+explicit rather than a changed default.
 
 ## Submission checklist (from the brief, §7)
 

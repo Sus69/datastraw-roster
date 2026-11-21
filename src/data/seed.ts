@@ -205,10 +205,12 @@ export const BRANDS: Brand[] = [
   },
 ];
 
-// Staffing pattern (matches the brief): 10 of 12 brands (83%) have ONE dedicated
-// employee handling all of that brand's processes; BookBarn has 2, WellnessWave
-// has 3. The remaining employees are shared across brands or pod floaters who
-// act as secondary/backup cover.
+// Staffing pattern (matches the brief): 9 of 12 brands (75%) have ONE dedicated
+// employee handling all of that brand's processes; AutoAce and BookBarn have 2
+// primaries each and WellnessWave has 3. Every single-resource brand still
+// carries at least one secondary allocation per process. The remaining
+// employees are shared across brands or pod floaters who act as secondary/backup
+// cover.
 export const EMPLOYEES: Employee[] = [
   // Pod Alpha
   { id: 'e01', name: 'Aarav Mehta', podId: 'pod-alpha', weeklyOff: [0], leaves: ['2026-12-08', '2026-12-09', '2026-12-10'], compOffs: [] },

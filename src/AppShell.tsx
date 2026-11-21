@@ -8,6 +8,7 @@ import {
   PODS,
   RULES,
   WEEKDAYS,
+  daysInMonth,
   isHoliday,
   processLabel,
 } from './data/seed';
@@ -167,26 +168,42 @@ function formatLedgerDate(iso: string): string {
   return `${monthNames[m - 1]} ${d}`;
 }
 
-function getConflictSentence(c: Conflict, data: RosterData): string {
+/** Real required/scheduled counts for the slot a conflict refers to. */
+function coverageCountsFor(result: RosterResult | undefined, c: Conflict): { required: number; scheduled: number } | undefined {
+  if (!result || !c.brandId || !c.processId) return undefined;
+  const row = result.coverage.find(
+    (x) => x.date === c.date && x.brandId === c.brandId && x.processId === c.processId,
+  );
+  return row ? { required: row.required, scheduled: row.scheduled.length } : undefined;
+}
+
+function weekdayLabel(iso: string): string {
+  return WEEKDAYS[new Date(`${iso}T12:00:00`).getDay()];
+}
+
+function getConflictSentence(c: Conflict, data: RosterData, result?: RosterResult): string {
   const brand = c.brandId ? data.brands.find((b) => b.id === c.brandId) : undefined;
   const brandName = brand ? brand.name : (c.brandId ?? 'Operating process');
   const procName = c.processId ? processLabel(c.processId) : '';
   const dateStr = formatLedgerDate(c.date);
+  const weekday = weekdayLabel(c.date);
   const emp = c.employeeId ? data.employees.find((e) => e.id === c.employeeId) : undefined;
   const empName = emp?.name ?? 'Staff member';
-  const isFemale = /^(Neha|Meera|Pooja|Ananya|Kavita|Divya|Riya|Ishita|Sneha|Priya)\b/i.test(empName);
-  const pronoun = isFemale ? 'her' : 'his';
+  const counts = coverageCountsFor(result, c);
 
   if (c.type === 'COVERAGE_GAP') {
-    return `${brandName}${procName ? ' ' + procName : ''} — ${dateStr}, no one scheduled. Needs 1.`;
+    return `${brandName}${procName ? ' ' + procName : ''} — ${weekday} ${dateStr}, no one scheduled (minimum ${counts?.required ?? 1}).`;
   }
   if (c.type === 'UNDERSTAFFED') {
-    return `${brandName}${procName ? ' ' + procName : ''} — ${dateStr}, only 1 staff scheduled. Needs 2.`;
+    return `${brandName}${procName ? ' ' + procName : ''} — ${weekday} ${dateStr}, ${counts?.scheduled ?? 0} of ${counts?.required ?? 1} required staff scheduled.`;
   }
   if (c.type === 'OFF_OVERRIDDEN') {
-    return `${empName} — worked ${pronoun} weekly off, ${dateStr}, to cover ${brandName}.`;
+    const entry = result?.entries.find((e) => e.employeeId === c.employeeId && e.date === c.date);
+    const processes = entry?.processes.map((pid) => processLabel(pid)).join(', ');
+    const covered = processes ? ` (${processes})` : '';
+    return `${empName} — worked on a preferred weekly off (${weekday}) on ${dateStr} to cover ${brandName}${covered}.`;
   }
-  return c.message.replace(/2026-12-(\d+)/g, 'Dec $1');
+  return c.message.replace(/\d{4}-\d{2}-\d{2}/g, (m) => formatLedgerDate(m));
 }
 
 export default function App() {
@@ -244,6 +261,7 @@ export default function App() {
   }, [data, year, month]);
 
   const monthLabel = `${year}-${String(month).padStart(2, '0')}`;
+  const monthName = new Date(year, month - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
   const entryByKey = useMemo(() => {
     const m = new Map<string, { brandId: string; processes: ProcessId[]; overriddenOff: boolean }>();
     for (const e of result.entries) m.set(`${e.employeeId}|${e.date}`, e);
@@ -427,6 +445,14 @@ export default function App() {
                 if (y && m) {
                   setYear(y);
                   setMonth(m);
+                  // Keep the "Simulate a change" date inside the month on
+                  // screen, so switching the month cannot leave a stale date
+                  // selected from the previous month.
+                  setSimDate((current) => {
+                    const day = Number(current.slice(8, 10)) || 1;
+                    const days = daysInMonth(y, m);
+                    return days[Math.min(day - 1, days.length - 1)];
+                  });
                 }
               }}
             >
@@ -495,7 +521,7 @@ export default function App() {
               )}
               <h1>
                 {VIEWS.find((v) => v.id === view)?.label} —{' '}
-                {new Date(year, month - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' })}
+                {monthName}
               </h1>
             </div>
 
@@ -511,6 +537,7 @@ export default function App() {
           <OverviewView
             result={result}
             data={data}
+            monthName={monthName}
             employees={filteredEmployees}
             entryByKey={entryByKey}
             search={search}
@@ -581,6 +608,7 @@ export default function App() {
           <ConflictsView
             conflicts={visibleConflicts}
             allConflicts={result.conflicts}
+            monthName={monthName}
             filter={conflictFilter}
             setFilter={setConflictFilter}
             data={data}
@@ -620,40 +648,27 @@ export default function App() {
 interface AttentionStripProps {
   conflicts: Conflict[];
   data: RosterData;
+  result: RosterResult;
+  monthName: string;
   onInspectDate: (date: string, employeeId?: string) => void;
   onJumpToConflicts: () => void;
 }
 
-function getAttentionErrorSentence(c: Conflict, data: RosterData): string {
+function getAttentionErrorSentence(c: Conflict, data: RosterData, result: RosterResult): string {
   const dt = new Date(`${c.date}T12:00:00`);
   const dateFormatted = `${dt.toLocaleString('en-GB', { month: 'short' })} ${dt.getDate()}`;
   const brand = c.brandId ? data.brands.find((b) => b.id === c.brandId) : undefined;
   const brandName = brand?.name ?? c.brandId ?? 'Client operations';
   const procName = c.processId ? processLabel(c.processId) : '';
-  const emp = c.employeeId ? data.employees.find((e) => e.id === c.employeeId) : undefined;
+  const counts = coverageCountsFor(result, c);
 
-  if (c.brandId === 'b01' && c.processId === 'RET') {
-    return `Aarav Mehta — on leave ${dateFormatted}. GlowKart Retention uncovered. No backup assigned.`;
-  }
-  if (c.brandId === 'b11' && c.processId === 'CS') {
-    return `Meera Pillai — on leave ${dateFormatted}. BookBarn Customer Support uncovered. No backup assigned.`;
-  }
-  if (c.brandId === 'b11' && c.processId === 'RET') {
-    return `Sanjay Yadav — on leave ${dateFormatted}. BookBarn Retention uncovered. No backup assigned.`;
-  }
-  if (c.brandId === 'b04' && c.type === 'UNDERSTAFFED') {
-    return `TechTrove Customer Support — ${dateFormatted}, 1 of 2 staff. Neha Joshi on leave; Farhan Khan covering.`;
-  }
-  if (emp && emp.leaves.includes(c.date)) {
-    return `${emp.name} — on leave ${dateFormatted}. ${brandName} ${procName} uncovered. No backup assigned.`;
-  }
   if (c.type === 'COVERAGE_GAP') {
-    return `${brandName} ${procName} — ${dateFormatted}, no one scheduled. Needs 1 staff minimum.`;
+    return `${brandName} ${procName} — ${dateFormatted}, no one scheduled. The minimum is ${counts?.required ?? 1}.`;
   }
   if (c.type === 'UNDERSTAFFED') {
-    return `${brandName} ${procName} — ${dateFormatted}, understaffed. Operating requirement not met.`;
+    return `${brandName} ${procName} — ${dateFormatted}, ${counts?.scheduled ?? 0} of ${counts?.required ?? 1} required staff scheduled.`;
   }
-  return c.message;
+  return c.message.replace(/\d{4}-\d{2}-\d{2}/g, (m) => formatLedgerDate(m));
 }
 
 function AttentionNeededStrip(props: AttentionStripProps) {
@@ -666,7 +681,7 @@ function AttentionNeededStrip(props: AttentionStripProps) {
           <div className="ledger-row-left">
             <span className="status-sq status-success" />
             <span className="ledger-row-text">
-              No coverage gaps in December 2026. All mandatory client operating rules are fully satisfied.
+              No coverage gaps in {props.monthName}. All mandatory client operating rules are fully satisfied.
             </span>
           </div>
           <div className="ledger-row-right">
@@ -691,8 +706,11 @@ function AttentionNeededStrip(props: AttentionStripProps) {
           const dt = new Date(`${c.date}T12:00:00`);
           const dateLabel = `${dt.toLocaleString('en-GB', { month: 'short' })} ${dt.getDate()}`;
           const isGap = c.type === 'COVERAGE_GAP';
-          const statText = isGap ? '0 of 1' : '1 of 2';
-          const sentence = getAttentionErrorSentence(c, props.data);
+          const counts = coverageCountsFor(props.result, c);
+          const statText = isGap
+            ? `0 of ${counts?.required ?? 1}`
+            : `${counts?.scheduled ?? 0} of ${counts?.required ?? 1}`;
+          const sentence = getAttentionErrorSentence(c, props.data, props.result);
 
           return (
             <div key={c.id} className="ledger-row">
@@ -724,6 +742,7 @@ function AttentionNeededStrip(props: AttentionStripProps) {
 interface OverviewProps {
   result: RosterResult;
   data: RosterData;
+  monthName: string;
   employees: Employee[];
   entryByKey: Map<string, { brandId: string; processes: ProcessId[]; overriddenOff: boolean }>;
   search: string;
@@ -783,7 +802,9 @@ function SimulateSection(props: {
     currentSentence = `Current assignment on ${dateLabel}: Scheduled weekly off, 0h.`;
   }
 
-  let consequenceSentence = `Removing this person deducts 8h of shift capacity. Click Preview impact to validate.`;
+  let consequenceSentence = entObj
+    ? `Removing this shift deducts 8h of shift capacity. Click Preview impact to validate.`
+    : `${props.simEmpName} is not scheduled on ${dateLabel}, so marking the absence cannot open a coverage gap.`;
   if (props.simPreview) {
     if (props.simNewConflicts.length === 0) {
       consequenceSentence = `No new coverage gaps. ${props.simEmpName} absence on ${dateLabel} is absorbed by existing backup coverage.`;
@@ -911,6 +932,8 @@ function OverviewView(p: OverviewProps) {
       <AttentionNeededStrip
         conflicts={result.conflicts}
         data={data}
+        result={result}
+        monthName={p.monthName}
         onInspectDate={p.onInspectDate}
         onJumpToConflicts={p.onJumpToConflicts}
       />
@@ -1419,7 +1442,7 @@ function InspectorModal(props: InspectorModalProps) {
                   <div>
                     <strong>Planned leave (Approved)</strong>
                     <div className="modal-notice-sub">
-                      Hard constraint. The CP-SAT engine strictly prohibits scheduling on approved leave.
+                      Hard constraint. The roster engine never schedules an approved leave, and the independent validator re-checks every entry for it.
                     </div>
                   </div>
                 </div>
@@ -2090,6 +2113,7 @@ function RecoveryOptionsPanel(props: {
 function ConflictsView(props: {
   conflicts: Conflict[];
   allConflicts: Conflict[];
+  monthName: string;
   filter: 'all' | 'error' | 'warning' | 'gap' | 'understaffed';
   setFilter: (v: 'all' | 'error' | 'warning' | 'gap' | 'understaffed') => void;
   data: RosterData;
@@ -2111,8 +2135,14 @@ function ConflictsView(props: {
   function renderConflictItem(c: Conflict) {
     const isError = c.severity === 'error';
     const diagCode = c.type === 'OFF_OVERRIDDEN' ? 'WEEKLY_OFF_OVERRIDE' : c.type;
-    const sentence = getConflictSentence(c, data);
-    const statText = c.type === 'COVERAGE_GAP' ? '0 of 1' : c.type === 'UNDERSTAFFED' ? '1 of 2' : '8h';
+    const sentence = getConflictSentence(c, data, props.result);
+    const counts = coverageCountsFor(props.result, c);
+    const statText =
+      c.type === 'COVERAGE_GAP'
+        ? `0 of ${counts?.required ?? 1}`
+        : c.type === 'UNDERSTAFFED'
+          ? `${counts?.scheduled ?? 0} of ${counts?.required ?? 1}`
+          : '8h';
 
     return (
       <div key={c.id} className="ledger-row">
@@ -2201,7 +2231,7 @@ function ConflictsView(props: {
       </div>
 
       {conflicts.length === 0 ? (
-        <p className="ok-text" style={{ marginTop: 14 }}>No coverage gaps in December 2026. All operational rules satisfied.</p>
+        <p className="ok-text" style={{ marginTop: 14 }}>No coverage gaps in {props.monthName}. All operational rules satisfied.</p>
       ) : (
         <div>
           {gapsList.length > 0 && (

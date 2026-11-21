@@ -17,6 +17,7 @@ import {
   generateRoster,
   generateRosterCPSAT,
   isHardUnavailable,
+  isOperatingDay,
   isWeeklyOff,
   rosterToCsv,
 } from './lib/engine';
@@ -648,6 +649,9 @@ export default function App() {
           onMarkUnavailable={markEmployeeUnavailable}
           onToggleWeeklyOff={toggleWeeklyOffPreference}
           onApplyRecovery={applyRecoveryAssignment}
+          onInspect={(inspectDate, inspectEmployeeId) =>
+            setInspectorTarget({ date: inspectDate, employeeId: inspectEmployeeId })
+          }
           onJumpToConflicts={() => {
             setInspectorTarget(null);
             setView('conflicts');
@@ -1373,6 +1377,7 @@ interface InspectorModalProps {
   onMarkUnavailable: (employeeId: string, date: string) => void;
   onToggleWeeklyOff: (employeeId: string, weekday: number) => void;
   onApplyRecovery: (assignment: RecoveryAssignment) => void;
+  onInspect: (date: string, employeeId: string) => void;
   onJumpToConflicts: () => void;
 }
 
@@ -1395,6 +1400,85 @@ function InspectorModal(props: InspectorModalProps) {
   const isCompOff = emp ? emp.compOffs.includes(date) : false;
   const holiday = isHoliday(date);
   const isOff = emp ? emp.weeklyOff.includes(dt.getDay()) : false;
+
+  // What an absent employee would normally have covered on this date. Use all
+  // of their allocations (primary and secondary) so a secondary process such
+  // as Meera's BookBarn RET is included when its primary is also away.
+  const wouldCover = emp && (isLeave || isCompOff)
+    ? (() => {
+        const seen = new Set<string>();
+        const targets: Array<{ brandId: string; brandName: string; processId: ProcessId }> = [];
+        for (const allocation of data.allocations) {
+          if (allocation.employeeId !== emp.id) continue;
+          const brand = data.brands.find((b) => b.id === allocation.brandId);
+          const process = brand?.processes.find((p) => p.processId === allocation.processId);
+          if (!brand || !process || !isOperatingDay(process.rule, date, data.holidays)) continue;
+          const key = `${allocation.brandId}|${allocation.processId}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          targets.push({ brandId: brand.id, brandName: brand.name, processId: allocation.processId });
+        }
+        return targets;
+      })()
+    : [];
+
+  const entryOrder = new Map(
+    result.entries.filter((e) => e.date === date).map((e, index) => [e.employeeId, index]),
+  );
+  const coverGroups = new Map<string, {
+    employeeId: string;
+    name: string;
+    processes: ProcessId[];
+    roles: string[];
+    overriddenOff: boolean;
+  }>();
+  const uncovered: Array<{ brandId: string; brandName: string; processId: ProcessId }> = [];
+
+  for (const target of wouldCover) {
+    const coverage = result.coverage.find(
+      (c) => c.date === date && c.brandId === target.brandId && c.processId === target.processId,
+    );
+    const scheduled = (coverage?.scheduled ?? []).filter((id) => id !== emp?.id);
+    if (scheduled.length === 0) {
+      uncovered.push(target);
+      continue;
+    }
+    for (const coverId of scheduled) {
+      const coverEmployee = data.employees.find((e) => e.id === coverId);
+      if (!coverEmployee) continue;
+      const allocation = data.allocations.find(
+        (a) =>
+          a.employeeId === coverId &&
+          a.brandId === target.brandId &&
+          a.processId === target.processId,
+      );
+      const coverEntry = result.entries.find((e) => e.employeeId === coverId && e.date === date);
+      let group = coverGroups.get(coverId);
+      if (!group) {
+        group = {
+          employeeId: coverId,
+          name: coverEmployee.name,
+          processes: [],
+          roles: [],
+          overriddenOff: false,
+        };
+        coverGroups.set(coverId, group);
+      }
+      if (!group.processes.includes(target.processId)) group.processes.push(target.processId);
+      const role = allocation?.role ?? 'no allocation record';
+      if (!group.roles.includes(role)) group.roles.push(role);
+      if (coverEntry?.overriddenOff) group.overriddenOff = true;
+    }
+  }
+
+  const coverRows = [...coverGroups.values()].sort((a, b) => {
+    const aOrder = entryOrder.get(a.employeeId);
+    const bOrder = entryOrder.get(b.employeeId);
+    if (aOrder !== undefined && bOrder !== undefined) return aOrder - bOrder;
+    if (aOrder !== undefined) return -1;
+    if (bOrder !== undefined) return 1;
+    return a.name.localeCompare(b.name);
+  });
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -1524,6 +1608,47 @@ function InspectorModal(props: InspectorModalProps) {
                   Toggle weekly off ({dayName})
                 </button>
               </div>
+            </div>
+          )}
+
+          {emp && (isLeave || isCompOff) && (
+            <div className="modal-section">
+              <h3 className="modal-section-title">Covered by</h3>
+              {coverRows.length === 0 && uncovered.length === 0 ? (
+                <p className="muted small" style={{ margin: 0 }}>
+                  No operating process was assigned to {emp.name.split(' ')[0]} on {displayDate}.
+                </p>
+              ) : (
+                <div className="modal-cover-list">
+                  {coverRows.map((row) => (
+                    <div key={row.employeeId} className="modal-cover-row">
+                      <div className="modal-cover-line">
+                        <button
+                          type="button"
+                          className="action-link"
+                          onClick={() => props.onInspect(date, row.employeeId)}
+                        >
+                          {row.name}
+                        </button>
+                        <span> — {row.processes.join(' + ')} ({row.roles.join(' + ')})</span>
+                      </div>
+                      {row.overriddenOff && (
+                        <div className="modal-cover-override">
+                          <span className="status-sq status-warning" />
+                          Worked their weekly off to cover this.
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {uncovered.map((target) => (
+                    <div key={`${target.brandId}|${target.processId}`} className="modal-cover-row">
+                      <div className="modal-cover-line">
+                        No one covered {target.processId} on {displayDate}.
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

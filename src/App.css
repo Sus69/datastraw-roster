@@ -1626,6 +1626,45 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   padding-top: 4px;
 }
 
+/* Covered by: ruled rows, one plain fact per line, clickable cover names. */
+.modal-cover-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-cover-row {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-cover-row:last-child {
+  border-bottom: none;
+}
+
+.modal-cover-line {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.modal-cover-override {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--warning);
+}
+
+.modal-cover-override .status-sq {
+  margin-right: 0;
+}
+
 .modal-coverage-status {
   display: flex;
   align-items: flex-start;

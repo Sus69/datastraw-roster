@@ -28,6 +28,7 @@ import {
 } from './lib/recovery';
 import { MonthMap } from './components/MonthMap';
 import { RecoveryLab } from './components/recovery/RecoveryLab';
+import { LeaveHistoryView, buildLeaveRows } from './components/LeaveHistoryView';
 import './App.css';
 
 // ---------------------------------------------------------------------------
@@ -103,7 +104,7 @@ function mergeData(o: Overrides): RosterData {
   };
 }
 
-type View = 'overview' | 'recovery' | 'pods' | 'brands' | 'processes' | 'employees' | 'conflicts';
+type View = 'overview' | 'recovery' | 'pods' | 'brands' | 'processes' | 'employees' | 'leaves' | 'conflicts';
 
 const VIEWS: { id: View; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -112,6 +113,7 @@ const VIEWS: { id: View; label: string }[] = [
   { id: 'brands', label: 'Brands' },
   { id: 'processes', label: 'Processes' },
   { id: 'employees', label: 'Employees' },
+  { id: 'leaves', label: 'Leave history' },
   { id: 'conflicts', label: 'Conflicts' },
 ];
 
@@ -267,6 +269,12 @@ export default function App() {
     for (const e of result.entries) m.set(`${e.employeeId}|${e.date}`, e);
     return m;
   }, [result]);
+
+  const leaveRows = useMemo(() => buildLeaveRows(data, result), [data, result]);
+  const leaveDayCount = useMemo(
+    () => leaveRows.filter((r) => r.kind === 'leave').reduce((n, r) => n + r.dates.length, 0),
+    [leaveRows],
+  );
 
   const scheduledEmpIds = useMemo(() => {
     return new Set(result.entries.map((e) => e.employeeId));
@@ -479,6 +487,9 @@ export default function App() {
                   if (result.stats.warnings > 0) parts.push(`${result.stats.warnings} overrides`);
                   if (parts.length > 0) badgeText = ` (${parts.join(', ')})`;
                 }
+                if (v.id === 'leaves') {
+                  badgeText = ` (${leaveDayCount})`;
+                }
                 return (
                   <option key={v.id} value={v.id}>
                     {v.label}{badgeText}
@@ -601,6 +612,13 @@ export default function App() {
             selectedEmployee={selectedEmployee}
             setSelectedEmployee={setSelectedEmployee}
             onInspectEmployee={(empId) => setInspectorTarget({ date: result.days[0], employeeId: empId })}
+          />
+        )}
+
+        {view === 'leaves' && (
+          <LeaveHistoryView
+            rows={leaveRows}
+            onInspect={(date, employeeId) => setInspectorTarget({ date, employeeId })}
           />
         )}
 

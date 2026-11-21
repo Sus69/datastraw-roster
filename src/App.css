@@ -645,6 +645,75 @@ h2, h3, .section-title, .ledger-section-title, .panel-title, .attention-heading,
   color: var(--warning);
 }
 
+/* Leave history: one ruled row per leave episode, plain facts on separate lines. */
+.leave-history-summary {
+  margin: 0 0 14px;
+}
+
+.leave-history-row {
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.leave-history-main {
+  display: block;
+  min-width: 0;
+}
+
+.leave-history-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.leave-history-person {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.leave-history-sep {
+  color: var(--muted);
+}
+
+.leave-history-date {
+  color: var(--ink);
+}
+
+.leave-history-type {
+  color: var(--ink-2);
+}
+
+.leave-history-fact {
+  color: var(--ink-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.leave-history-cover {
+  color: var(--ink);
+}
+
+.leave-history-status {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+@media (max-width: 640px) {
+  .leave-history-row {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .leave-history-status {
+    align-self: flex-start;
+  }
+}
+
 /* Status: 8px solid square + text word */
 .status-sq {
   display: inline-block;

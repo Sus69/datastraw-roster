@@ -508,6 +508,34 @@ export default function App() {
   const understaffedCount = result.conflicts.filter((c) => c.type === 'UNDERSTAFFED').length;
   const overridesCount = result.stats.warnings;
 
+  // Compact badges shown next to view names in the large-screen view list.
+  function viewBadges(id: View): { key: string; label: string; tone: string; title: string }[] {
+    if (id === 'conflicts') {
+      const badges: { key: string; label: string; tone: string; title: string }[] = [];
+      if (result.stats.errors > 0) {
+        badges.push({
+          key: 'errors',
+          label: String(result.stats.errors),
+          tone: 'danger',
+          title: `${result.stats.errors} error${result.stats.errors === 1 ? '' : 's'}`,
+        });
+      }
+      if (result.stats.warnings > 0) {
+        badges.push({
+          key: 'overrides',
+          label: String(result.stats.warnings),
+          tone: 'warn',
+          title: `${result.stats.warnings} override${result.stats.warnings === 1 ? '' : 's'}`,
+        });
+      }
+      return badges;
+    }
+    if (id === 'leaves') {
+      return [{ key: 'leaves', label: String(leaveDayCount), tone: '', title: `${leaveDayCount} leave day${leaveDayCount === 1 ? '' : 's'}` }];
+    }
+    return [];
+  }
+
   return (
     <div className="app">
       <aside className={`sidebar ${isSidebarOpen ? '' : 'collapsed'}`} aria-label="Sidebar navigation">
@@ -560,8 +588,9 @@ export default function App() {
             </select>
           </div>
 
-          <div className="side-select-wrap">
-            <label className="side-label" htmlFor="view-picker">View</label>
+          <div className="side-select-wrap view-picker-wrap">
+            {/* Small screens: compact dropdown. Large screens: flat view list below. */}
+            <label className="side-label view-picker-label" htmlFor="view-picker">View</label>
             <select
               id="view-picker"
               className="month-select view-select"
@@ -586,6 +615,30 @@ export default function App() {
                 );
               })}
             </select>
+
+            <nav className="view-nav" aria-label="Views">
+              {VIEWS.map((v) => {
+                const badges = viewBadges(v.id);
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    className={`nav-btn ${view === v.id ? 'active' : ''}`}
+                    onClick={() => setView(v.id)}
+                    aria-current={view === v.id ? 'page' : undefined}
+                  >
+                    <span>{v.label}</span>
+                    {badges.length > 0 && (
+                      <span className="nav-badges-wrap">
+                        {badges.map((b) => (
+                          <span key={b.key} className={`nav-badge ${b.tone}`} title={b.title}>{b.label}</span>
+                        ))}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
         </div>
 

@@ -246,11 +246,32 @@ html, body {
   outline-offset: 1px;
 }
 
+/* View switcher: dropdown on compact layouts, flat list on laptop/desktop */
+.view-nav {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+}
+
+@media (min-width: 901px) {
+  .view-picker-wrap .view-select {
+    display: none;
+  }
+  .view-picker-wrap .view-nav {
+    display: flex;
+  }
+}
+
 .nav {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+
+.nav-btn .nav-badge { color: #9CA3AF; }
+.nav-btn.active .nav-badge { color: #D1D5DB; }
+.nav-btn .nav-badge.danger { color: #EF4444; }
+.nav-btn .nav-badge.warn { color: #F59E0B; }
 
 .nav-btn {
   display: flex;

@@ -1,8 +1,9 @@
 /**
- * TypeScript smoke tests for the recovery engine — the only test suite for
- * this repo. This file exercises the browser/TypeScript implementation
- * directly so discovery, simulation, validation and ranking are covered by
- * tests, not just by the UI.
+ * TypeScript parity smoke tests for the recovery engine.
+ *
+ * The Python suite is the primary regression suite. This file exercises the
+ * browser/TypeScript implementation directly so discovery, simulation,
+ * validation and ranking cannot silently drift from the Python engine.
  */
 
 import assert from 'node:assert/strict';
@@ -643,8 +644,8 @@ function patched(entries: RosterEntry[]): RosterResult {
   }
 }
 
-// Shared fixture: the ranked repair order and ranking keys for a seed
-// scenario, asserted here so a change to ranking breaks loudly.
+// Shared fixture: Python and TypeScript must produce the same lexicographical
+// order and ranking keys for the same seed scenario.
 {
   const parity = JSON.parse(
     readFileSync('tests/parity_scenarios.json', 'utf8'),
